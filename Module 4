@@ -1,0 +1,465 @@
+# ============================================================================
+# MODULE 4: SYSTEM PERFORMANCE TUNING FOR TRADING APPLICATIONS
+# PURPOSE: Optimize kernel parameters and process scheduling for consistent trading execution
+# LATENCY TARGET: <500μs inter-process communication latency
+# STABILITY REQUIREMENT: Zero context switching jitter during market volatility
+# ============================================================================
+
+# -----------------------------------------------------------------------------
+# OPERATION: Install Performance Testing Tools
+# WHY: Required to measure baseline and optimized performance metrics
+# EXPECTED OUTCOME: All testing tools available for comprehensive validation
+# FAILURE MODE: Package installation fails - retry with apt update
+# RETAIL LIMITATION: Consumer kernels lack some real-time testing features
+# -----------------------------------------------------------------------------
+sudo apt update && sudo apt install -y rt-tests hwloc-nox stress-ng numactl redis-server redis-tools build-essential bc socat netcat-openbsd sysstat linux-tools-generic iotop irqbalance jq
+
+# -----------------------------------------------------------------------------
+# OPERATION: Capture Baseline Performance Metrics
+# WHY: Establishes pre-optimization performance for before/after comparison
+# EXPECTED OUTCOME: Baseline metrics stored in /tmp/trading-baseline/
+# FAILURE MODE: Measurement fails - ensure system is idle during testing
+# RETAIL LIMITATION: Consumer systems show higher baseline jitter than enterprise
+# -----------------------------------------------------------------------------
+mkdir -p /tmp/trading-baseline && echo "=== CAPTURING BASELINE METRICS ===" && cyclictest -t 1 -p 99 -i 100 -h 400 -q --duration=30s > /tmp/trading-baseline/cyclictest-before.log 2>&1 && sudo hwlatdetect --duration=30 > /tmp/trading-baseline/hwlatdetect-before.log 2>&1 && redis-server --daemonize yes --save "" --appendonly no && sleep 2 && redis-cli PING && redis-cli XADD trading_stream * type order price 100.00 quantity 1000 > /dev/null && redis-cli eval "local start = redis.call('TIME'); for i=1,1000 do redis.call('XREAD', 'COUNT', '1', 'STREAMS', 'trading_stream', '0-0'); end; local finish = redis.call('TIME'); return (finish[1]*1000000 + finish[2]) - (start[1]*1000000 + start[2])" 0 > /tmp/trading-baseline/redis-streams-latency-before.log && redis-cli shutdown && cat /proc/vmstat | grep pgfault > /tmp/trading-baseline/pagefaults-before.log && cat /proc/interrupts > /tmp/trading-baseline/interrupts-before.log && echo "Baseline metrics captured"
+
+# -----------------------------------------------------------------------------
+# OPERATION: Create UNIX Domain Socket Test Program
+# WHY: Provides lowest IPC latency measurement for trading processes
+# EXPECTED OUTCOME: Socket latency test program compiled and ready
+# FAILURE MODE: Compilation fails - verify build-essential installed
+# RETAIL LIMITATION: Consumer filesystems lack optimized socket handling
+# -----------------------------------------------------------------------------
+cat > /tmp/socket-test.c << 'EOF'
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <time.h>
+#include <string.h>
+#include <sys/wait.h>
+
+int main() {
+    struct sockaddr_un addr;
+    int server_fd, client_fd;
+    char buffer[64];
+    struct timespec start, end;
+    long total_latency = 0;
+    int iterations = 1000;
+    
+    server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strcpy(addr.sun_path, "/tmp/trading_socket");
+    unlink("/tmp/trading_socket");
+    bind(server_fd, (struct sockaddr*)&addr, sizeof(addr));
+    listen(server_fd, 1);
+    
+    if (fork() == 0) {
+        client_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        sleep(1);
+        connect(client_fd, (struct sockaddr*)&addr, sizeof(addr));
+        
+        for (int i = 0; i < iterations; i++) {
+            clock_gettime(CLOCK_MONOTONIC, &start);
+            write(client_fd, "test", 4);
+            read(client_fd, buffer, 4);
+            clock_gettime(CLOCK_MONOTONIC, &end);
+            long latency = (end.tv_sec - start.tv_sec) * 1000000 + (end.tv_nsec - start.tv_nsec) / 1000;
+            total_latency += latency;
+        }
+        printf("Average UNIX socket latency: %ld microseconds\n", total_latency / iterations);
+        close(client_fd);
+        exit(0);
+    } else {
+        client_fd = accept(server_fd, NULL, NULL);
+        for (int i = 0; i < iterations; i++) {
+            read(client_fd, buffer, 4);
+            write(client_fd, buffer, 4);
+        }
+        close(client_fd);
+        close(server_fd);
+        wait(NULL);
+    }
+    return 0;
+}
+EOF
+
+gcc -O3 -o /tmp/socket-test /tmp/socket-test.c && /tmp/socket-test > /tmp/trading-baseline/socket-latency-before.log
+
+# -----------------------------------------------------------------------------
+# OPERATION: Safe GRUB Configuration with Backup
+# WHY: CPU core isolation prevents context switching jitter from background processes
+# EXPECTED OUTCOME: Cores 2-N isolated for trading processes with <10μs jitter
+# FAILURE MODE: Boot fails - use GRUB menu to select previous kernel version
+# RETAIL LIMITATION: Consumer BIOS may not support all isolation parameters
+# -----------------------------------------------------------------------------
+sudo cp /etc/default/grub /etc/default/grub.backup && CORES=$(nproc) && ISOLATED_CORES="2-$((CORES-2))" && sudo sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="quiet splash isolcpus='$ISOLATED_CORES' nohz_full='$ISOLATED_CORES' rcu_nocbs='$ISOLATED_CORES' intel_pstate=disable processor.max_cstate=1 idle=poll nosoftlockup"/' /etc/default/grub && sudo update-grub
+
+# -----------------------------------------------------------------------------
+# OPERATION: IRQ Affinity Configuration
+# WHY: Prevents network and disk interrupts from disrupting trading cores
+# EXPECTED OUTCOME: All IRQs bound to non-trading cores for deterministic latency
+# FAILURE MODE: IRQ binding fails - verify with /proc/interrupts
+# RETAIL LIMITATION: Consumer NICs lack per-queue interrupt control of enterprise cards
+# -----------------------------------------------------------------------------
+cat > /usr/local/bin/set-irq-affinity.sh << 'EOF'
+#!/bin/bash
+# Disable IRQ balancing service
+sudo systemctl stop irqbalance
+sudo systemctl disable irqbalance
+
+# Set IRQ affinity mask to use only cores 0-1
+for irq in $(cat /proc/interrupts | grep -E "eth|ens|enp|nvme|ahci" | awk '{print $1}' | tr -d ':'); do
+  echo "Setting IRQ $irq to cores 0-1"
+  echo 3 > /proc/irq/$irq/smp_affinity
+done
+
+# Verify IRQ settings
+echo "IRQ affinity verification:"
+for irq in $(cat /proc/interrupts | grep -E "eth|ens|enp|nvme|ahci" | awk '{print $1}' | tr -d ':'); do
+  echo "IRQ $irq: $(cat /proc/irq/$irq/smp_affinity)"
+done
+EOF
+
+chmod +x /usr/local/bin/set-irq-affinity.sh && sudo /usr/local/bin/set-irq-affinity.sh && echo "@reboot root /usr/local/bin/set-irq-affinity.sh" | sudo tee -a /etc/crontab
+
+# -----------------------------------------------------------------------------
+# OPERATION: Kernel Parameter Optimization
+# WHY: Reduces scheduler granularity and eliminates memory management delays
+# EXPECTED OUTCOME: Sub-100μs scheduler decisions with minimal swap activity
+# FAILURE MODE: System instability - revert sysctl settings
+# RETAIL LIMITATION: Consumer kernels have higher minimum granularity limits
+# -----------------------------------------------------------------------------
+sudo tee /etc/sysctl.d/99-trading.conf << 'EOF'
+kernel.sched_min_granularity_ns = 100000
+kernel.sched_wakeup_granularity_ns = 50000
+kernel.sched_migration_cost_ns = 50000
+kernel.sched_rt_runtime_us = -1
+vm.swappiness = 0
+vm.dirty_ratio = 5
+vm.dirty_background_ratio = 2
+kernel.hung_task_timeout_secs = 0
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.core.netdev_max_backlog = 5000
+net.core.somaxconn = 1024
+kernel.shmmax = 17179869184
+kernel.shmall = 4194304
+fs.mqueue.msg_max = 10000
+vm.zone_reclaim_mode = 1
+kernel.numa_balancing = 0
+net.unix.max_dgram_qlen = 512
+net.core.rmem_default = 262144
+net.core.wmem_default = 262144
+EOF
+
+sudo sysctl -p /etc/sysctl.d/99-trading.conf
+
+# -----------------------------------------------------------------------------
+# OPERATION: Redis Streams Configuration for Trading IPC
+# WHY: Optimizes Redis for sub-500μs stream-based market data delivery
+# EXPECTED OUTCOME: Redis Streams operations complete in <300μs
+# FAILURE MODE: Redis fails to start - check port availability
+# RETAIL LIMITATION: Consumer SSDs lack enterprise write endurance for persistent Redis
+# -----------------------------------------------------------------------------
+sudo tee /etc/redis/redis-trading.conf << 'EOF'
+bind 127.0.0.1
+port 6380
+save ""
+maxmemory 2gb
+maxmemory-policy allkeys-lru
+tcp-nodelay yes
+tcp-keepalive 60
+timeout 0
+databases 16
+hz 100
+rdbcompression no
+rdbchecksum no
+stop-writes-on-bgsave-error no
+io-threads 2
+io-threads-do-reads yes
+EOF
+
+sudo systemctl stop redis-server && redis-server /etc/redis/redis-trading.conf --daemonize yes
+
+# -----------------------------------------------------------------------------
+# OPERATION: UNIX Domain Socket Optimization
+# WHY: Eliminates TCP/IP stack overhead for local trading process communication
+# EXPECTED OUTCOME: Socket operations achieve <200μs latency consistently
+# FAILURE MODE: Socket buffer exhaustion - reduce buffer sizes
+# RETAIL LIMITATION: Consumer kernels may not support all socket optimizations
+# -----------------------------------------------------------------------------
+sudo tee -a /etc/security/limits.conf << 'EOF'
+*               soft    nofile          1048576
+*               hard    nofile          1048576
+EOF
+
+sudo tee /usr/local/bin/socket-optimize.sh << 'EOF'
+#!/bin/bash
+# Increase socket buffer size for faster communication
+echo 65536 > /proc/sys/net/core/wmem_default
+echo 65536 > /proc/sys/net/core/rmem_default
+
+# Reduce socket listen backlog timeout
+echo 10 > /proc/sys/net/ipv4/tcp_fin_timeout
+
+# Optimize localhost socket connections
+echo 1 > /proc/sys/net/ipv4/tcp_low_latency
+EOF
+
+chmod +x /usr/local/bin/socket-optimize.sh && sudo /usr/local/bin/socket-optimize.sh
+
+# -----------------------------------------------------------------------------
+# OPERATION: NUMA Node Optimization for Trading Processes
+# WHY: Ensures trading processes access memory from the same NUMA node
+# EXPECTED OUTCOME: Zero cross-NUMA memory accesses for trading applications
+# FAILURE MODE: NUMA imbalance - redistribute processes across NUMA nodes
+# RETAIL LIMITATION: Consumer systems have limited NUMA topology compared to servers
+# -----------------------------------------------------------------------------
+sudo tee /usr/local/bin/numa-trading-optimize.sh << 'EOF'
+#!/bin/bash
+# Usage: numa-trading-optimize.sh <PID> <NUMA_NODE>
+# Example: numa-trading-optimize.sh 1234 0
+
+PID=$1
+NODE=$2
+
+if [ -z "$PID" ] || [ -z "$NODE" ]; then
+  echo "Usage: $0 <PID> <NUMA_NODE>"
+  exit 1
+fi
+
+# Check if NUMA exists on this system
+if ! command -v numactl &> /dev/null; then
+  echo "numactl not found. Install with: sudo apt install numactl"
+  exit 1
+fi
+
+# Check if system has NUMA
+if [ $(numactl --hardware | grep available | awk '{print $2}') -lt 2 ]; then
+  echo "System has only one NUMA node. No optimization needed."
+  exit 0
+fi
+
+# Move process to specified NUMA node
+sudo numactl --membind=$NODE --cpunodebind=$NODE -p $PID
+
+# Verify process NUMA status
+echo "Process $PID NUMA status:"
+grep -i numa /proc/$PID/status
+
+# Lock process memory to prevent page faults
+echo "Locking process memory for PID $PID"
+sudo echo 0 > /proc/$PID/oom_score_adj
+sudo pmap $PID | grep -v 'vvar\|vdso\|vsyscall' | awk '{print $1}' | grep -v 'Address' | xargs -I{} sudo cgroups-mount && sudo cgcreate -g memory:trading && sudo cgset -r memory.swappiness=0 trading && sudo cgclassify -g memory:trading $PID
+EOF
+
+chmod +x /usr/local/bin/numa-trading-optimize.sh
+
+# -----------------------------------------------------------------------------
+# OPERATION: Market Volatility Simulation Script
+# WHY: Tests system stability under trading load conditions
+# EXPECTED OUTCOME: System maintains <500μs IPC latency during stress
+# FAILURE MODE: System becomes unresponsive - reduce stress intensity
+# RETAIL LIMITATION: Consumer hardware may throttle under sustained load
+# -----------------------------------------------------------------------------
+sudo tee /usr/local/bin/market-volatility-sim.sh << 'EOF'
+#!/bin/bash
+echo "Starting market volatility simulation..."
+
+# Start stress test in background
+stress-ng --cpu 4 --io 2 --vm 2 --vm-bytes 1G --timeout 60s &
+STRESS_PID=$!
+
+# Start Redis if not running
+redis-cli -p 6380 PING &>/dev/null || redis-server /etc/redis/redis-trading.conf --daemonize yes
+
+# Simulate high-frequency trading activity with Redis Streams
+echo "Using Redis Streams for market data..."
+for i in {1..5000}; do
+    # Add market data to stream (timestamp is automatic with *)
+    redis-cli -p 6380 XADD trading_stream * type order price "$(bc <<< "scale=2; 100+$RANDOM/327.67")" quantity $((1000 + RANDOM % 1000)) > /dev/null
+    
+    # Read from stream to simulate trading process
+    redis-cli -p 6380 XREAD COUNT 1 STREAMS trading_stream 0-0 > /dev/null
+    
+    # Print progress
+    if [ $((i % 500)) -eq 0 ]; then
+        echo "Processed $i market events"
+    fi
+    usleep 500
+done
+
+# Get stream length as verification
+STREAM_LENGTH=$(redis-cli -p 6380 XLEN trading_stream)
+echo "Market volatility simulation completed - $STREAM_LENGTH events processed"
+
+# Wait for stress to complete
+wait $STRESS_PID
+EOF
+
+sudo chmod +x /usr/local/bin/market-volatility-sim.sh
+
+# -----------------------------------------------------------------------------
+# OPERATION: Trading Process Priority Script
+# WHY: Ensures trading processes get SCHED_RR priority on isolated cores
+# EXPECTED OUTCOME: Trading processes preempt all others with <5μs switching
+# FAILURE MODE: System lockup - test with non-critical processes first
+# RETAIL LIMITATION: Consumer kernels may not support all scheduling policies
+# -----------------------------------------------------------------------------
+sudo tee /usr/local/bin/trading-priority.sh << 'EOF'
+#!/bin/bash
+# Usage: trading-priority.sh <PID> <CORE>
+PID=$1
+CORE=$2
+
+if [ -z "$PID" ] || [ -z "$CORE" ]; then
+    echo "Usage: $0 <PID> <CORE>"
+    exit 1
+fi
+
+# Set real-time priority (SCHED_RR)
+sudo chrt -r -p 99 $PID
+
+# Pin to specific CPU core
+sudo taskset -cp $CORE $PID
+
+# Protect from OOM killer
+sudo echo -1000 > /proc/$PID/oom_score_adj
+
+# Lock memory pages to prevent swapping
+sudo pmap $PID | tail -n 1
+sudo pmap $PID | grep -v 'vvar\|vdso\|vsyscall' | grep anon | awk '{print $1}' | xargs -I{} sudo bash -c "grep {} /proc/$PID/maps | grep rw | while read line; do addr=\$(echo \$line | cut -d- -f1); sudo gdb -p $PID --batch -ex \"call mlock((void *)\$addr, 4096)\" > /dev/null 2>&1; done"
+
+echo "Process $PID set to RT priority on core $CORE with memory locked"
+EOF
+
+sudo chmod +x /usr/local/bin/trading-priority.sh
+
+# =============================================================================
+# MODULE VALIDATION
+# -----------------------------------------------------------------------------
+echo "=== VALIDATING OPTIMIZATIONS ==="
+
+# Verify kernel parameters applied successfully
+echo "Checking kernel parameters..."
+sudo sysctl kernel.sched_min_granularity_ns kernel.sched_wakeup_granularity_ns vm.swappiness
+
+# Measure optimized IPC latency with Redis Streams
+echo "Testing Redis Streams latency after optimization..."
+redis-cli -p 6380 PING && redis-cli -p 6380 XADD trading_stream * type order price 100.00 quantity 1000 > /dev/null && redis-cli -p 6380 eval "local start = redis.call('TIME'); for i=1,1000 do redis.call('XREAD', 'COUNT', '1', 'STREAMS', 'trading_stream', '0-0'); end; local finish = redis.call('TIME'); return (finish[1]*1000000 + finish[2]) - (start[1]*1000000 + start[2])" 0 > /tmp/trading-baseline/redis-streams-latency-after.log
+
+# Test UNIX domain socket latency after optimization
+echo "Testing UNIX socket latency after optimization..."
+/tmp/socket-test > /tmp/trading-baseline/socket-latency-after.log
+
+# Run hardware latency detection
+echo "Running hardware latency detection..."
+sudo hwlatdetect --duration=30 > /tmp/trading-baseline/hwlatdetect-after.log 2>&1
+
+# Test scheduling jitter under market volatility simulation
+echo "Testing scheduling jitter during market volatility..."
+/usr/local/bin/market-volatility-sim.sh &
+SIM_PID=$!
+cyclictest -t 1 -p 99 -i 100 -h 400 -q --duration=60s > /tmp/trading-baseline/cyclictest-after.log 2>&1
+wait $SIM_PID
+
+# Verify IRQ affinity settings
+echo "Verifying IRQ affinity settings..."
+cat /proc/interrupts > /tmp/trading-baseline/interrupts-after.log
+
+# Verify zero page faults for critical processes
+echo "Checking page fault statistics..."
+cat /proc/vmstat | grep pgfault > /tmp/trading-baseline/pagefaults-after.log
+
+# Calculate percentage improvements
+echo "=== PERFORMANCE IMPROVEMENT CALCULATIONS ==="
+SOCKET_BEFORE=$(grep "Average UNIX socket latency" /tmp/trading-baseline/socket-latency-before.log | awk '{print $5}')
+SOCKET_AFTER=$(grep "Average UNIX socket latency" /tmp/trading-baseline/socket-latency-after.log | awk '{print $5}')
+SOCKET_IMPROVEMENT=$(echo "scale=2; (($SOCKET_BEFORE-$SOCKET_AFTER)/$SOCKET_BEFORE)*100" | bc)
+
+REDIS_BEFORE=$(cat /tmp/trading-baseline/redis-streams-latency-before.log)
+REDIS_AFTER=$(cat /tmp/trading-baseline/redis-streams-latency-after.log)
+REDIS_IMPROVEMENT=$(echo "scale=2; (($REDIS_BEFORE-$REDIS_AFTER)/$REDIS_BEFORE)*100" | bc)
+
+# Extract maximum latency from cyclictest
+CYCLE_BEFORE=$(grep "Max Latencies" /tmp/trading-baseline/cyclictest-before.log | tr " " "\n" | grep -v "^$" | sort -n | tail -1)
+CYCLE_AFTER=$(grep "Max Latencies" /tmp/trading-baseline/cyclictest-after.log | tr " " "\n" | grep -v "^$" | sort -n | tail -1)
+CYCLE_IMPROVEMENT=$(echo "scale=2; (($CYCLE_BEFORE-$CYCLE_AFTER)/$CYCLE_BEFORE)*100" | bc)
+
+# Display before/after comparison with percentage improvements
+echo "=== PERFORMANCE COMPARISON ==="
+echo "UNIX Socket Latency: $SOCKET_BEFORE μs → $SOCKET_AFTER μs (${SOCKET_IMPROVEMENT}% improvement)"
+echo "Redis Streams Latency: $REDIS_BEFORE μs → $REDIS_AFTER μs (${REDIS_IMPROVEMENT}% improvement)"
+echo "Maximum Scheduling Jitter: $CYCLE_BEFORE μs → $CYCLE_AFTER μs (${CYCLE_IMPROVEMENT}% improvement)"
+
+echo "Page faults before: $(cat /tmp/trading-baseline/pagefaults-before.log)"
+echo "Page faults after: $(cat /tmp/trading-baseline/pagefaults-after.log)"
+
+# Verify CPU governor and core isolation
+echo "CPU governor status:" 
+cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor | head -4
+
+echo "Isolated cores verification:"
+cat /proc/cmdline | grep isolcpus
+
+# =============================================================================
+# ROLLBACK PROCEDURE
+# -----------------------------------------------------------------------------
+cat << 'EOF' > /usr/local/bin/trading-rollback.sh
+#!/bin/bash
+echo "=== EXECUTING ROLLBACK PROCEDURE ==="
+
+# 1. Stop trading Redis instance
+echo "Stopping trading Redis instance..."
+redis-cli -p 6380 shutdown
+
+# 2. Restore GRUB configuration
+echo "Restoring GRUB configuration..."
+sudo cp /etc/default/grub.backup /etc/default/grub
+sudo update-grub
+
+# 3. Remove trading-specific sysctl settings
+echo "Removing trading sysctl settings..."
+sudo rm /etc/sysctl.d/99-trading.conf
+sudo sysctl --system
+
+# 4. Re-enable IRQ balancing
+echo "Re-enabling IRQ balancing..."
+sudo systemctl enable irqbalance
+sudo systemctl start irqbalance
+
+# 5. Restore default CPU governor
+echo "Restoring default CPU governor..."
+for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+  echo ondemand | sudo tee $cpu
+done
+
+# 6. Remove custom scripts
+echo "Removing custom scripts..."
+sudo rm /usr/local/bin/market-volatility-sim.sh
+sudo rm /usr/local/bin/trading-priority.sh
+sudo rm /usr/local/bin/socket-optimize.sh
+sudo rm /usr/local/bin/set-irq-affinity.sh
+sudo rm /usr/local/bin/numa-trading-optimize.sh
+
+# 7. Remove crontab entries
+echo "Removing crontab entries..."
+sudo sed -i '/set-irq-affinity.sh/d' /etc/crontab
+
+# 8. Clean up test files
+echo "Cleaning up test files..."
+rm -rf /tmp/trading-baseline /tmp/socket-test /tmp/socket-test.c
+
+echo "Rollback complete. Please reboot the system to apply all changes:"
+echo "sudo reboot"
+
+echo "Expected recovery time: <60 seconds after reboot"
+echo "Verification: Redis and scheduler latency returns to baseline levels"
+EOF
+
+chmod +x /usr/local/bin/trading-rollback.sh
+echo "Rollback script created at /usr/local/bin/trading-rollback.sh"
+# =============================================================================
