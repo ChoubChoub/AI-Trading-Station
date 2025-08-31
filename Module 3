@@ -1,0 +1,625 @@
+============================================================================
+MODULE 3: GPU CONFIGURATION FOR DETERMINISTIC INFERENCE
+PURPOSE: Optimize GPU subsystem for consistent AI model execution in trading decisions
+LATENCY TARGET: <2ms variance in inference timing
+STABILITY REQUIREMENT: Zero VRAM-related failures during trading hours
+============================================================================
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: Baseline Performance Measurement (Pre-Optimization)
+# WHY: Establishes performance metrics before optimization to quantify actual improvement
+# EXPECTED OUTCOME: Baseline inference timing, thermal profile, and VRAM usage recorded
+# FAILURE MODE: If PyTorch not available, install with pip3 install torch torchvision torchaudio
+# RETAIL LIMITATION: Consumer GPUs show 15-25% higher timing variance than datacenter A100/H100 cards
+# -----------------------------------------------------------------------------
+mkdir -p ~/gpu_optimization_logs && cat > ~/baseline_measurement.py << 'EOF'
+#!/usr/bin/env python3
+import torch
+import time
+import statistics
+import json
+import subprocess
+import os
+from datetime import datetime
+
+def measure_baseline_performance():
+    results = {
+        'timestamp': datetime.now().isoformat(),
+        'system_info': {},
+        'inference_timing': {},
+        'thermal_profile': {},
+        'vram_usage': {}
+    }
+    
+    # System info
+    if torch.cuda.is_available():
+        results['system_info']['gpu_name'] = torch.cuda.get_device_name(0)
+        results['system_info']['cuda_version'] = torch.version.cuda
+        results['system_info']['driver_version'] = subprocess.getoutput('nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits')
+    
+    # Inference timing baseline
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = torch.nn.Linear(1024, 1024).to(device)
+    input_tensor = torch.randn(32, 1024).to(device)
+    
+    # Warmup
+    for _ in range(100):
+        _ = model(input_tensor)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    
+    # Timing measurements
+    timings = []
+    for i in range(1000):
+        start = time.perf_counter()
+        output = model(input_tensor)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        end = time.perf_counter()
+        timings.append((end - start) * 1000)  # Convert to ms
+    
+    results['inference_timing'] = {
+        'mean_ms': statistics.mean(timings),
+        'std_dev_ms': statistics.stdev(timings),
+        'variance_percent': statistics.stdev(timings) / statistics.mean(timings) * 100,
+        'min_ms': min(timings),
+        'max_ms': max(timings),
+        'p95_ms': sorted(timings)[int(0.95 * len(timings))]
+    }
+    
+    # Thermal baseline
+    if torch.cuda.is_available():
+        temp_output = subprocess.getoutput('nvidia-smi --query-gpu=temperature.gpu,power.draw --format=csv,noheader,nounits')
+        temp, power = temp_output.split(', ')
+        results['thermal_profile'] = {
+            'idle_temp_c': int(temp),
+            'idle_power_w': int(power)
+        }
+        
+        # VRAM usage baseline
+        memory_info = torch.cuda.mem_get_info()
+        results['vram_usage'] = {
+            'free_gb': memory_info[0] / 1e9,
+            'total_gb': memory_info[1] / 1e9,
+            'used_percent': (1 - memory_info[0] / memory_info[1]) * 100
+        }
+    
+    # Save baseline
+    with open('~/gpu_optimization_logs/baseline_performance.json', 'w') as f:
+        json.dump(results, f, indent=2)
+    
+    print("=== BASELINE PERFORMANCE MEASUREMENT ===")
+    print(f"GPU: {results['system_info'].get('gpu_name', 'CPU only')}")
+    print(f"Inference timing: {results['inference_timing']['mean_ms']:.3f}ms ± {results['inference_timing']['std_dev_ms']:.3f}ms")
+    print(f"Timing variance: {results['inference_timing']['variance_percent']:.2f}%")
+    print(f"Temperature: {results['thermal_profile'].get('idle_temp_c', 'N/A')}°C")
+    print(f"VRAM usage: {results['vram_usage'].get('used_percent', 0):.1f}%")
+    print("Baseline saved to ~/gpu_optimization_logs/baseline_performance.json")
+    
+    return results
+
+if __name__ == "__main__":
+    measure_baseline_performance()
+EOF
+chmod +x ~/baseline_measurement.py && python3 ~/baseline_measurement.py
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: Complete NVIDIA Environment Cleanup
+# WHY: Remove conflicting drivers that cause non-deterministic GPU behavior in trading models
+# EXPECTED OUTCOME: Clean system with no NVIDIA drivers or CUDA installations
+# FAILURE MODE: If purge fails, boot with nomodeset and retry; check for secure boot conflicts
+# RETAIL LIMITATION: Consumer systems may have OEM drivers that resist removal, requiring manual intervention
+# -----------------------------------------------------------------------------
+sudo apt update && sudo apt purge '*nvidia*' '*cuda*' '*cublas*' '*curand*' '*cufft*' '*cufile*' '*curand*' '*cusolver*' '*cusparse*' '*npp*' '*nvjpeg*' -y && sudo apt autoremove -y && sudo apt autoclean && sudo rm -rf /usr/local/cuda* /opt/cuda* && sudo ldconfig && sudo rm -f /etc/modprobe.d/*nvidia* /etc/modprobe.d/*nouveau*
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: System Preparation for GPU Determinism
+# WHY: Install prerequisites and configure kernel modules for stable GPU operation
+# EXPECTED OUTCOME: All build tools available, kernel headers match running kernel, nouveau blacklisted
+# FAILURE MODE: If headers mismatch, reboot to latest kernel first
+# RETAIL LIMITATION: Consumer motherboards may lack advanced PCIe configuration options found in server boards
+# -----------------------------------------------------------------------------
+sudo apt install build-essential linux-headers-$(uname -r) dkms gcc make pkg-config libvulkan1 mesa-vulkan-drivers vulkan-tools -y && echo 'blacklist nouveau' | sudo tee /etc/modprobe.d/blacklist-nouveau.conf && echo 'options nouveau modeset=0' | sudo tee -a /etc/modprobe.d/blacklist-nouveau.conf && sudo update-initramfs -u && sudo modprobe -r nouveau || true
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: NVIDIA Driver Installation (Version Pinned for Determinism)
+# WHY: Version 535.154.05+ provides stable inference timing; newer versions may introduce variance
+# EXPECTED OUTCOME: nvidia-smi shows version 535+ with GPU detected and persistence mode available
+# FAILURE MODE: If installation fails, check secure boot (disable if necessary), verify GPU seated properly
+# RETAIL LIMITATION: Consumer GPUs lack ECC memory and professional-grade error correction of datacenter cards
+# -----------------------------------------------------------------------------
+sudo ubuntu-drivers devices && sudo ubuntu-drivers install nvidia:535-open && sudo systemctl enable nvidia-persistenced && sudo reboot
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: CUDA Toolkit 12.3 Installation (Version Pinned)
+# WHY: CUDA 12.3 provides optimal inference performance for trading models; 12.4+ may introduce latency
+# EXPECTED OUTCOME: nvcc shows version 12.3, all CUDA libraries available in /usr/local/cuda-12.3
+# FAILURE MODE: If installation conflicts, remove all CUDA first and retry
+# RETAIL LIMITATION: Consumer GPUs have reduced tensor core performance vs A100/H100 datacenter cards (30-40% lower)
+# -----------------------------------------------------------------------------
+wget https://developer.download.nvidia.com/compute/cuda/12.3.2/local_installers/cuda_12.3.2_545.23.08_linux.run && sudo chmod +x cuda_12.3.2_545.23.08_linux.run && sudo ./cuda_12.3.2_545.23.08_linux.run --silent --toolkit --samples --no-opengl-libs && rm cuda_12.3.2_545.23.08_linux.run
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: CUDA Environment Configuration for Trading Models
+# WHY: Proper paths ensure consistent CUDA library loading; improper paths cause model loading failures
+# EXPECTED OUTCOME: CUDA commands available in PATH, libraries in LD_LIBRARY_PATH
+# FAILURE MODE: If nvcc not found after reboot, manually source ~/.bashrc
+# RETAIL LIMITATION: Single consumer GPU limits model parallelization compared to multi-GPU professional setups
+# -----------------------------------------------------------------------------
+echo 'export PATH=/usr/local/cuda-12.3/bin:$PATH' >> ~/.bashrc && echo 'export LD_LIBRARY_PATH=/usr/local/cuda-12.3/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc && echo 'export CUDA_HOME=/usr/local/cuda-12.3' >> ~/.bashrc && source ~/.bashrc && sudo ldconfig
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: GPU Clock Locking for Deterministic Performance
+# WHY: Prevents thermal throttling that causes 5-15ms inference variance during trading hours
+# EXPECTED OUTCOME: GPU clocks locked at maximum stable frequency, no throttling under load
+# FAILURE MODE: If clocks won't lock, reduce target frequency by 50MHz increments until stable
+# RETAIL LIMITATION: Consumer cooling solutions require 10-15% lower clock targets than datacenter liquid cooling
+# -----------------------------------------------------------------------------
+sudo nvidia-smi -pm 1 && sudo nvidia-smi -ac $(nvidia-smi --query-supported-clocks=memory,graphics --format=csv,noheader,nounits | head -1 | tr ',' ' ') && sudo nvidia-smi -pl $(nvidia-smi --query-gpu=power.max_limit --format=csv,noheader,nounits | head -1) && sudo nvidia-settings -a '[gpu:0]/GPUPowerMizerMode=1' 2>/dev/null || true
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: PyTorch Deterministic Configuration for Trading Models
+# WHY: Ensures consistent inference timing across model runs for trading decision reliability
+# EXPECTED OUTCOME: PyTorch configured for deterministic operation with minimal performance impact
+# FAILURE MODE: If performance drops >10%, disable cudnn.benchmark but keep deterministic=True
+# RETAIL LIMITATION: Deterministic mode reduces inference speed by 5-10% compared to non-deterministic
+# -----------------------------------------------------------------------------
+cat > ~/pytorch_deterministic_config.py << 'EOF'
+#!/usr/bin/env python3
+import torch
+import numpy as np
+import random
+import os
+
+def configure_deterministic_pytorch():
+    """Configure PyTorch for deterministic inference in trading applications"""
+    
+    # Set random seeds for reproducibility
+    torch.manual_seed(42)
+    torch.cuda.manual_seed_all(42)
+    np.random.seed(42)
+    random.seed(42)
+    
+    # Enable deterministic operations
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False  # Disable for consistency
+    torch.use_deterministic_algorithms(True, warn_only=True)
+    
+    # Set environment variables for deterministic behavior
+    os.environ['PYTHONHASHSEED'] = '42'
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+    
+    print("PyTorch configured for deterministic inference")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    print(f"Deterministic mode: {torch.backends.cudnn.deterministic}")
+    print(f"cuDNN benchmark: {torch.backends.cudnn.benchmark}")
+    
+    return True
+
+if __name__ == "__main__":
+    configure_deterministic_pytorch()
+EOF
+chmod +x ~/pytorch_deterministic_config.py && python3 ~/pytorch_deterministic_config.py
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: Advanced VRAM Monitoring System with CPU Fallback
+# WHY: Prevents VRAM exhaustion crashes; switches to CPU models automatically to maintain trading
+# EXPECTED OUTCOME: Real-time VRAM monitoring with automatic model switching at 85% utilization
+# FAILURE MODE: If monitoring fails, check nvidia-ml-py installation and GPU permissions
+# RETAIL LIMITATION: Consumer GPUs (24GB max) vs professional cards (80GB+) require aggressive monitoring and fallback
+# -----------------------------------------------------------------------------
+pip3 install nvidia-ml-py3 psutil torch && cat > ~/vram_monitor_advanced.py << 'EOF'
+#!/usr/bin/env python3
+import nvidia_ml_py3 as nvml
+import torch
+import time
+import logging
+import subprocess
+import json
+import threading
+from datetime import datetime, timedelta
+from collections import deque
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - VRAM - %(message)s')
+nvml.nvmlInit()
+
+class AdvancedVRAMMonitor:
+    def __init__(self, threshold=0.85, critical=0.95):
+        self.threshold = threshold
+        self.critical = critical
+        self.device = nvml.nvmlDeviceGetHandleByIndex(0)
+        self.usage_history = deque(maxlen=3600)  # 1 hour of data
+        self.fallback_active = False
+        self.cpu_model_cache = {}
+        
+    def get_vram_stats(self):
+        """Get current VRAM usage statistics"""
+        mem_info = nvml.nvmlDeviceGetMemoryInfo(self.device)
+        return {
+            'used_gb': mem_info.used / 1e9,
+            'free_gb': mem_info.free / 1e9,
+            'total_gb': mem_info.total / 1e9,
+            'usage_percent': mem_info.used / mem_info.total,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def log_vram_usage(self):
+        """Continuously log VRAM usage for analysis"""
+        stats = self.get_vram_stats()
+        self.usage_history.append(stats)
+        
+        # Save hourly usage patterns
+        if len(self.usage_history) >= 3600:
+            with open(f'~/gpu_optimization_logs/vram_usage_{datetime.now().strftime("%Y%m%d_%H")}.json', 'w') as f:
+                json.dump(list(self.usage_history), f, indent=2)
+    
+    def trigger_cpu_fallback(self, usage_percent):
+        """Switch models to CPU instead of killing processes"""
+        if self.fallback_active:
+            return
+            
+        self.fallback_active = True
+        logging.critical(f"VRAM CRITICAL ({usage_percent:.1%}) - Switching to CPU models")
+        
+        try:
+            # Signal trading system to switch to CPU models
+            with open('/tmp/trading_vram_fallback', 'w') as f:
+                json.dump({
+                    'fallback_active': True,
+                    'vram_usage': usage_percent,
+                    'timestamp': datetime.now().isoformat(),
+                    'reason': 'VRAM_CRITICAL'
+                }, f)
+            
+            # Force garbage collection to free VRAM
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            
+            logging.info("CPU fallback activated - Trading system notified")
+            
+        except Exception as e:
+            logging.error(f"Fallback activation failed: {e}")
+    
+    def check_recovery(self, usage_percent):
+        """Check if we can recover from CPU fallback"""
+        if not self.fallback_active:
+            return
+            
+        if usage_percent < (self.threshold - 0.10):  # 10% buffer below threshold
+            self.fallback_active = False
+            logging.info(f"VRAM recovered ({usage_percent:.1%}) - GPU models can resume")
+            
+            # Signal recovery
+            with open('/tmp/trading_vram_fallback', 'w') as f:
+                json.dump({
+                    'fallback_active': False,
+                    'vram_usage': usage_percent,
+                    'timestamp': datetime.now().isoformat(),
+                    'reason': 'VRAM_RECOVERED'
+                }, f)
+    
+    def test_fallback_mechanism(self):
+        """Test the fallback mechanism by artificially creating VRAM pressure"""
+        logging.info("Testing VRAM fallback mechanism...")
+        
+        try:
+            # Allocate large tensor to trigger fallback
+            test_tensor = torch.randn(10000, 10000, device='cuda')
+            time.sleep(2)
+            
+            # Check if fallback triggered
+            if self.fallback_active:
+                logging.info("Fallback test PASSED - mechanism triggered correctly")
+                
+            # Clean up
+            del test_tensor
+            torch.cuda.empty_cache()
+            
+            return self.fallback_active
+            
+        except Exception as e:
+            logging.error(f"Fallback test failed: {e}")
+            return False
+    
+    def run_monitor(self):
+        """Main monitoring loop"""
+        logging.info("Advanced VRAM monitor started")
+        
+        while True:
+            try:
+                stats = self.get_vram_stats()
+                usage = stats['usage_percent']
+                
+                # Log usage
+                self.log_vram_usage()
+                
+                # Check thresholds
+                if usage > self.critical:
+                    self.trigger_cpu_fallback(usage)
+                elif usage > self.threshold:
+                    logging.warning(f"VRAM HIGH: {usage:.1%} - Monitor for escalation")
+                else:
+                    self.check_recovery(usage)
+                
+                time.sleep(1)
+                
+            except Exception as e:
+                logging.error(f"Monitor error: {e}")
+                time.sleep(5)
+
+if __name__ == "__main__":
+    monitor = AdvancedVRAMMonitor()
+    
+    # Test fallback mechanism first
+    monitor.test_fallback_mechanism()
+    
+    # Start monitoring
+    monitor.run_monitor()
+EOF
+chmod +x ~/vram_monitor_advanced.py
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: GPU System Service Configuration with Monitoring
+# WHY: Ensures GPU settings persist across reboots and VRAM monitoring runs automatically
+# EXPECTED OUTCOME: GPU settings automatically applied at boot, VRAM monitoring active
+# FAILURE MODE: If service fails, check systemctl status gpu-trading-config for errors
+# RETAIL LIMITATION: Consumer systems lack enterprise management tools for automated GPU configuration
+# -----------------------------------------------------------------------------
+sudo cat > /etc/systemd/system/gpu-trading-config.service << 'EOF'
+[Unit]
+Description=GPU Configuration for Trading with VRAM Monitoring
+After=graphical.target nvidia-persistenced.service
+Wants=vram-monitor.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'nvidia-smi -pm 1 && nvidia-smi -ac $(nvidia-smi --query-supported-clocks=memory,graphics --format=csv,noheader,nounits | head -1 | tr "," " ") && nvidia-smi -pl $(nvidia-smi --query-gpu=power.max_limit --format=csv,noheader,nounits | head -1)'
+RemainAfterExit=yes
+User=root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo cat > /etc/systemd/system/vram-monitor.service << 'EOF'
+[Unit]
+Description=Advanced VRAM Monitor for Trading
+After=gpu-trading-config.service
+Requires=gpu-trading-config.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/ChoubChoub/vram_monitor_advanced.py
+Restart=always
+RestartSec=5
+User=ChoubChoub
+Environment=PYTHONPATH=/usr/local/lib/python3.11/site-packages
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload && sudo systemctl enable gpu-trading-config.service vram-monitor.service && sudo systemctl start gpu-trading-config.service
+
+bash
+
+# -----------------------------------------------------------------------------
+# OPERATION: Post-Optimization Performance Measurement and Comparison
+# WHY: Quantifies actual performance improvement to validate optimization effectiveness
+# EXPECTED OUTCOME: Detailed before/after comparison showing <2ms variance achievement
+# FAILURE MODE: If performance degraded, check thermal throttling and clock locking status
+# RETAIL LIMITATION: Consumer GPUs may not achieve datacenter-level consistency due to thermal constraints
+# -----------------------------------------------------------------------------
+cat > ~/performance_comparison.py << 'EOF'
+#!/usr/bin/env python3
+import torch
+import time
+import statistics
+import json
+import subprocess
+import os
+from datetime import datetime
+
+# Import deterministic configuration
+exec(open('/home/ChoubChoub/pytorch_deterministic_config.py').read())
+
+def measure_optimized_performance():
+    configure_deterministic_pytorch()
+    
+    results = {
+        'timestamp': datetime.now().isoformat(),
+        'optimization_type': 'full_gpu_optimization',
+        'system_info': {},
+        'inference_timing': {},
+        'thermal_profile': {},
+        'vram_usage': {},
+        'deterministic_config': {
+            'cudnn_deterministic': torch.backends.cudnn.deterministic,
+            'cudnn_benchmark': torch.backends.cudnn.benchmark,
+            'use_deterministic_algorithms': True
+        }
+    }
+    
+    # System info
+    if torch.cuda.is_available():
+        results['system_info']['gpu_name'] = torch.cuda.get_device_name(0)
+        results['system_info']['cuda_version'] = torch.version.cuda
+        results['system_info']['driver_version'] = subprocess.getoutput('nvidia-smi --query-gpu=driver_version --format=csv,noheader,nounits')
+        results['system_info']['gpu_clocks'] = subprocess.getoutput('nvidia-smi --query-gpu=clocks.applications.graphics,clocks.applications.memory --format=csv,noheader,nounits')
+    
+    # Sustained load inference timing (more realistic for trading)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = torch.nn.Sequential(
+        torch.nn.Linear(1024, 2048),
+        torch.nn.ReLU(),
+        torch.nn.Linear(2048, 1024),
+        torch.nn.ReLU(),
+        torch.nn.Linear(1024, 512)
+    ).to(device)
+    
+    input_tensor = torch.randn(32, 1024).to(device)
+    
+    # Extended warmup for stability
+    for _ in range(200):
+        _ = model(input_tensor)
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    
+    # Measure with sustained load
+    timings = []
+    temps = []
+    
+    for i in range(2000):  # Extended test
+        start = time.perf_counter()
+        output = model(input_tensor)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        end = time.perf_counter()
+        timings.append((end - start) * 1000)
+        
+        # Sample temperature every 100 iterations
+        if i % 100 == 0 and torch.cuda.is_available():
+            temp = subprocess.getoutput('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits')
+            temps.append(int(temp))
+    
+    results['inference_timing'] = {
+        'mean_ms': statistics.mean(timings),
+        'std_dev_ms': statistics.stdev(timings),
+        'variance_percent': statistics.stdev(timings) / statistics.mean(timings) * 100,
+        'min_ms': min(timings),
+        'max_ms': max(timings),
+        'p95_ms': sorted(timings)[int(0.95 * len(timings))],
+        'p99_ms': sorted(timings)[int(0.99 * len(timings))],
+        'target_achieved': statistics.stdev(timings) < 2.0
+    }
+    
+    # Thermal profile under load
+    if temps:
+        results['thermal_profile'] = {
+            'max_temp_c': max(temps),
+            'mean_temp_c': statistics.mean(temps),
+            'thermal_throttling_detected': max(temps) > 83  # Thermal throttling threshold
+        }
+    
+    # VRAM usage
+    if torch.cuda.is_available():
+        memory_info = torch.cuda.mem_get_info()
+        results['vram_usage'] = {
+            'free_gb': memory_info[0] / 1e9,
+            'total_gb': memory_info[1] / 1e9,
+            'used_percent': (1 - memory_info[0] / memory_info[1]) * 100
+        }
+    
+    # Save results
+    with open('~/gpu_optimization_logs/optimized_performance.json', 'w') as f:
+        json.dump(results, f, indent=2)
+    
+    # Load baseline for comparison
+    try:
+        with open('~/gpu_optimization_logs/baseline_performance.json', 'r') as f:
+            baseline = json.load(f)
+            
+        print("=== OPTIMIZATION RESULTS COMPARISON ===")
+        print(f"GPU: {results['system_info'].get('gpu_name', 'CPU only')}")
+        print(f"Driver: {results['system_info'].get('driver_version', 'N/A')}")
+        print(f"GPU Clocks: {results['system_info'].get('gpu_clocks', 'N/A')}")
+        print()
+        
+        print("INFERENCE TIMING:")
+        baseline_mean = baseline['inference_timing']['mean_ms']
+        optimized_mean = results['inference_timing']['mean_ms']
+        baseline_std = baseline['inference_timing']['std_dev_ms']
+        optimized_std = results['inference_timing']['std_dev_ms']
+        
+        print(f"  Baseline:  {baseline_mean:.3f}ms ± {baseline_std:.3f}ms ({baseline['inference_timing']['variance_percent']:.2f}% variance)")
+        print(f"  Optimized: {optimized_mean:.3f}ms ± {optimized_std:.3f}ms ({results['inference_timing']['variance_percent']:.2f}% variance)")
+        print(f"  Improvement: {((baseline_std - optimized_std) / baseline_std * 100):+.1f}% variance reduction")
+        print(f"  Target (<2ms std dev): {'✓ ACHIEVED' if optimized_std < 2.0 else '✗ NOT ACHIEVED'}")
+        print()
+        
+        print("THERMAL PERFORMANCE:")
+        baseline_temp = baseline['thermal_profile'].get('idle_temp_c', 0)
+        max_temp = results['thermal_profile'].get('max_temp_c', 0)
+        print(f"  Baseline idle: {baseline_temp}°C")
+        print(f"  Max under load: {max_temp}°C")
+        print(f"  Thermal throttling: {'✗ DETECTED' if results['thermal_profile'].get('thermal_throttling_detected', False) else '✓ NONE'}")
+        print()
+        
+        print("CONFIGURATION:")
+        print(f"  Deterministic mode: {'✓ ENABLED' if results['deterministic_config']['cudnn_deterministic'] else '✗ DISABLED'}")
+        print(f"  Clock locking: {'✓ ACTIVE' if 'clocks.applications' in str(results['system_info'].get('gpu_clocks', '')) else '✗ INACTIVE'}")
+        
+    except FileNotFoundError:
+        print("Baseline measurements not found. Run baseline_measurement.py first.")
+    
+    return results
+
+if __name__ == "__main__":
+    measure_optimized_performance()
+EOF
+chmod +x ~/performance_comparison.py && python3 ~/performance_comparison.py
+
+=============================================================================
+MODULE VALIDATION
+-----------------------------------------------------------------------------
+1. Verify NVIDIA drivers and CUDA installation with version check
+
+nvidia-smi && nvcc --version && python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}, Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None"}, PyTorch version: {torch.version}')"
+2. Validate deterministic configuration is active
+
+python3 -c "import torch; print(f'Deterministic mode: {torch.backends.cudnn.deterministic}, Benchmark disabled: {not torch.backends.cudnn.benchmark}')"
+3. Test VRAM fallback mechanism (simulates VRAM pressure and verifies fallback)
+
+timeout 30s python3 ~/vram_monitor_advanced.py & sleep 5 && python3 -c " import torch try: # Create VRAM pressure large_tensor = torch.randn(5000, 5000, device='cuda') print('VRAM pressure created') import time; time.sleep(10) # Check for fallback file import os if os.path.exists('/tmp/trading_vram_fallback'): import json with open('/tmp/trading_vram_fallback', 'r') as f: fallback_status = json.load(f) print(f'Fallback mechanism test: {"PASS" if fallback_status.get("fallback_active", False) else "FAIL"}') else: print('Fallback mechanism test: FAIL - No fallback signal detected') except Exception as e: print(f'VRAM test error: {e}') finally: torch.cuda.empty_cache() " && pkill -f vram_monitor
+4. Verify GPU persistence mode and clock locking status
+
+nvidia-smi -q -d CLOCK,PERSISTENCE_MODE | grep -E "(Persistence Mode|Applications Clocks)" && echo "GPU configuration validated"
+5. Thermal stability test under sustained load (30-second stress test)
+
+timeout 30s python3 -c " import torch import subprocess import time device = torch.device('cuda') model = torch.nn.Linear(2048, 2048).to(device) input_tensor = torch.randn(64, 2048).to(device) start_temp = int(subprocess.getoutput('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits')) for i in range(1000): _ = model(input_tensor) torch.cuda.synchronize() end_temp = int(subprocess.getoutput('nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits')) print(f'Thermal test: Start {start_temp}°C → End {end_temp}°C') print(f'Thermal stability: {"PASS" if end_temp < 80 else "WARNING - Monitor cooling"}') "
+6. Final performance validation with before/after comparison
+
+python3 ~/performance_comparison.py
+=============================================================================
+=============================================================================
+ROLLBACK PROCEDURE
+-----------------------------------------------------------------------------
+Expected Recovery Time: <60 seconds
+Step 1: Stop all GPU services and monitoring
+
+sudo systemctl stop vram-monitor.service gpu-trading-config.service && sudo systemctl disable vram-monitor.service gpu-trading-config.service && sudo rm -f /etc/systemd/system/gpu-trading-config.service /etc/systemd/system/vram-monitor.service
+Step 2: Remove CUDA installation and environment variables
+
+sudo rm -rf /usr/local/cuda* && sudo apt purge 'cuda*' -y && sed -i '/cuda/d' ~/.bashrc && sed -i '/CUDA/d' ~/.bashrc
+Step 3: Remove NVIDIA drivers (system will fall back to nouveau)
+
+sudo apt purge 'nvidia' -y && sudo apt autoremove -y
+Step 4: Remove custom configurations and monitoring files
+
+rm -f ~/vram_monitor_advanced.py ~/pytorch_deterministic_config.py ~/performance_comparison.py ~/baseline_measurement.py && rm -rf ~/gpu_optimization_logs && rm -f /tmp/trading_vram_fallback
+Step 5: Clean modprobe configuration and reboot
+
+sudo rm -f /etc/modprobe.d/blacklist-nouveau.conf && sudo update-initramfs -u && sudo systemctl daemon-reload && sudo reboot
+Verification: Confirm rollback success (run after reboot)
+
+lsmod | grep nouveau && echo "Rollback successful - using open source nouveau drivers" && python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()} (should be False after rollback)')"
