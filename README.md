@@ -16,19 +16,26 @@ The **`scripts/onload-trading`** wrapper is the breakthrough technology that del
 
 ```
 Core Performance Technology:
-├── scripts/onload-trading     ← THE PERFORMANCE BREAKTHROUGH
-│   ├── OnLoad kernel bypass       (eliminates 45μs kernel overhead)
-│   ├── CPU isolation (cores 2,3)  (eliminates 12μs context switching)
-│   ├── Zero-latency polling       (eliminates 8μs interrupt latency)
-│   ├── Optimized buffer sizes     (eliminates 3μs buffer management)
-│   └── Non-blocking operations    (eliminates 5μs blocking I/O)
+├── scripts/onload-trading          ← THE PERFORMANCE BREAKTHROUGH
+│   ├── OnLoad kernel bypass            (eliminates 45μs kernel overhead)
+│   ├── CPU isolation (cores 2,3)       (eliminates 12μs context switching)
+│   ├── Zero-latency polling            (eliminates 8μs interrupt latency)
+│   ├── Optimized buffer sizes          (eliminates 3μs buffer management)
+│   └── Non-blocking operations         (eliminates 5μs blocking I/O)
+│
+VM Development Environment:
+├── scripts/vm-dev-environment      ← VM management & GitHub Copilot integration
+├── scripts/production-mode-switch  ← Automated mode switching (zero overhead)
+├── scripts/vm-setup-ubuntu.sh      ← Ubuntu 22.04 VM automated setup
+├── configs/vm-dev-setup.json       ← VM configuration templates
+└── docs/vm-development-guide.md    ← Comprehensive documentation
 │
 User Tools:
-├── ai-trading-station.sh      ← Monitoring/demo utility only
-├── Module 1                   ← Development environment setup
-├── Module 2                   ← BIOS & hardware optimization
-├── Module 3                   ← GPU configuration
-└── Module 4                   ← System performance tuning
+├── ai-trading-station.sh           ← Monitoring/demo utility + VM integration
+├── Module 1                        ← Development environment setup
+├── Module 2                        ← BIOS & hardware optimization
+├── Module 3                        ← GPU configuration
+└── Module 4                        ← System performance tuning
 ```
 
 ## ⚡ Performance Modes & Results
@@ -137,8 +144,56 @@ The AI Trading Station includes comprehensive system optimization modules:
 - **[Module 2](Module%202)**: BIOS & hardware optimization for <50μs jitter
 - **[Module 3](Module%203)**: GPU configuration for <2ms inference variance
 - **[Module 4](Module%204)**: System performance tuning for <500μs IPC latency
+- **VM Development Environment**: Safe development with production preservation
 
 These modules provide the foundation, but **`scripts/onload-trading`** delivers the core performance breakthrough.
+
+## 🖥️ VM Development Environment
+
+**NEW**: Comprehensive VM-based development environment for safe optimization work:
+
+### Key Features
+- **Zero Production Impact**: Complete VM isolation with verified clean states
+- **GitHub Copilot Integration**: AI-powered development in Ubuntu 22.04 VM
+- **Automated Mode Switching**: One-command transition between development/production
+- **Performance Preservation**: Full OnLoad capability (4.37μs) maintained
+
+### Quick Start
+```bash
+# Install virtualization stack
+sudo apt install qemu-kvm libvirt-daemon-system libvirt-clients virtinst
+
+# Setup development VM
+sudo ./scripts/vm-dev-environment setup
+
+# Switch to development mode
+./ai-trading-station.sh vm-dev
+
+# Switch to production mode (zero overhead)
+./ai-trading-station.sh vm-prod
+```
+
+### VM Development Commands
+```bash
+# VM management
+./scripts/vm-dev-environment setup    # Create development VM
+./scripts/vm-dev-environment start    # Start development mode
+./scripts/vm-dev-environment stop     # Stop development mode
+
+# Mode switching
+./scripts/production-mode-switch development  # Enable development
+./scripts/production-mode-switch production   # Enable production (zero overhead)
+
+# Integrated monitoring
+./ai-trading-station.sh vm-status    # Show VM environment status
+./ai-trading-station.sh vm-dev       # Quick development mode
+./ai-trading-station.sh vm-prod      # Quick production mode
+```
+
+### Documentation
+- **[Complete VM Setup Guide](docs/vm-development-guide.md)**: Comprehensive setup and usage documentation
+- **VM Configuration**: `configs/vm-dev-setup.json`
+- **Ubuntu 22.04 Setup**: `scripts/vm-setup-ubuntu.sh`
 
 ## 🎪 Demo & Monitoring
 

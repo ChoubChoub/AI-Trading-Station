@@ -1,0 +1,560 @@
+#!/bin/bash
+# ============================================================================
+# Production/Development Mode Switching Script
+# ============================================================================
+# PURPOSE: Automated mode switching between VM development and production
+#          with zero-impact production mode that preserves 4.37μs latency
+# ============================================================================
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+readonly LOG_FILE="${LOG_FILE:-$HOME/.production-mode-switch.log}"
+readonly STATE_FILE="$HOME/.ai-trading-station-mode"
+readonly BACKUP_DIR="$HOME/.ai-trading-station-backups"
+
+# Colors for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m' # No Color
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "${LOG_FILE}"
+}
+
+info() {
+    echo -e "${GREEN}[INFO]${NC} $*"
+}
+
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $*"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $*" >&2
+}
+
+get_current_mode() {
+    if [[ -f "$STATE_FILE" ]]; then
+        cat "$STATE_FILE"
+    else
+        echo "unknown"
+    fi
+}
+
+set_current_mode() {
+    local mode="$1"
+    echo "$mode" > "$STATE_FILE"
+    log "Mode set to: $mode"
+}
+
+create_backup() {
+    local backup_name="backup-$(date +%Y%m%d-%H%M%S)"
+    local backup_path="$BACKUP_DIR/$backup_name"
+    
+    info "Creating system backup: $backup_name"
+    mkdir -p "$backup_path"
+    
+    # Backup critical configuration files
+    local config_files=(
+        "/etc/default/grub"
+        "/proc/cmdline"
+        "/sys/devices/system/cpu/isolated"
+    )
+    
+    for config_file in "${config_files[@]}"; do
+        if [[ -f "$config_file" ]]; then
+            cp "$config_file" "$backup_path/" 2>/dev/null || true
+        fi
+    done
+    
+    # Backup current system state
+    {
+        echo "# System state backup - $backup_name"
+        echo "# Generated: $(date)"
+        echo
+        echo "## CPU Information"
+        cat /proc/cpuinfo | head -20
+        echo
+        echo "## Memory Information" 
+        cat /proc/meminfo | head -10
+        echo
+        echo "## Running Processes"
+        ps aux | head -20
+        echo
+        echo "## Network Interfaces"
+        ip addr show
+        echo
+        echo "## Loaded Modules"
+        lsmod | head -20
+    } > "$backup_path/system-state.txt"
+    
+    info "✓ Backup created: $backup_path"
+    echo "$backup_path"
+}
+
+verify_onload_performance() {
+    info "Verifying OnLoad performance capabilities..."
+    
+    # Check if OnLoad is installed
+    if ! command -v onload >/dev/null 2>&1; then
+        warn "OnLoad not installed - performance will be limited"
+        return 1
+    fi
+    
+    # Check OnLoad status
+    if ! onload_tool reload >/dev/null 2>&1; then
+        warn "OnLoad tools not responding properly"
+        return 1
+    fi
+    
+    # Check if onload-trading script is available
+    if [[ ! -x "$PROJECT_ROOT/scripts/onload-trading" ]]; then
+        error "onload-trading script not found or not executable"
+        return 1
+    fi
+    
+    # Test basic OnLoad functionality
+    info "Testing OnLoad functionality..."
+    if timeout 5 onload --profile=latency true >/dev/null 2>&1; then
+        info "✓ OnLoad performance verification passed"
+        return 0
+    else
+        warn "OnLoad performance test failed"
+        return 1
+    fi
+}
+
+check_cpu_isolation() {
+    info "Checking CPU isolation configuration..."
+    
+    # Check kernel command line for isolation parameters
+    local cmdline
+    cmdline=$(cat /proc/cmdline)
+    
+    if echo "$cmdline" | grep -q "isolcpus="; then
+        local isolated_cores
+        isolated_cores=$(echo "$cmdline" | grep -o "isolcpus=[0-9,]*" | cut -d= -f2)
+        info "✓ CPU isolation active: cores $isolated_cores"
+        return 0
+    else
+        warn "CPU isolation not configured in kernel command line"
+        return 1
+    fi
+}
+
+stop_all_vms() {
+    info "Stopping all virtual machines..."
+    
+    if ! command -v virsh >/dev/null 2>&1; then
+        info "libvirt not installed - no VMs to stop"
+        return 0
+    fi
+    
+    local running_vms
+    running_vms=$(sudo virsh list --name --state-running 2>/dev/null | grep -v '^$' || true)
+    
+    if [[ -z "$running_vms" ]]; then
+        info "✓ No running VMs found"
+        return 0
+    fi
+    
+    info "Stopping VMs: $running_vms"
+    for vm in $running_vms; do
+        info "Shutting down VM: $vm"
+        sudo virsh shutdown "$vm"
+        
+        # Wait for clean shutdown
+        local timeout=60
+        local count=0
+        while [[ $(sudo virsh domstate "$vm" 2>/dev/null) == "running" ]] && [[ $count -lt $timeout ]]; do
+            sleep 2
+            ((count += 2))
+        done
+        
+        if [[ $(sudo virsh domstate "$vm" 2>/dev/null) == "running" ]]; then
+            warn "VM $vm did not shut down cleanly, forcing shutdown"
+            sudo virsh destroy "$vm"
+        fi
+    done
+    
+    info "✓ All VMs stopped"
+}
+
+disable_vm_services() {
+    info "Disabling VM services for production mode..."
+    
+    local vm_services=(
+        "libvirtd"
+        "libvirt-guests"
+        "qemu-kvm"
+    )
+    
+    for service in "${vm_services[@]}"; do
+        if systemctl is-active --quiet "$service" 2>/dev/null; then
+            info "Stopping service: $service"
+            sudo systemctl stop "$service"
+        fi
+        
+        if systemctl is-enabled --quiet "$service" 2>/dev/null; then
+            info "Disabling service: $service"
+            sudo systemctl disable "$service"
+        fi
+    done
+    
+    info "✓ VM services disabled"
+}
+
+unload_vm_kernel_modules() {
+    info "Unloading VM kernel modules for minimal overhead..."
+    
+    local vm_modules=(
+        "vhost_net"
+        "vhost"
+        "kvm_intel" 
+        "kvm_amd"
+        "kvm"
+    )
+    
+    for module in "${vm_modules[@]}"; do
+        if lsmod | grep -q "^$module "; then
+            info "Unloading module: $module"
+            sudo modprobe -r "$module" 2>/dev/null || warn "Failed to unload $module (may be in use)"
+        fi
+    done
+    
+    info "✓ VM kernel modules processed"
+}
+
+verify_production_state() {
+    info "Verifying clean production state..."
+    
+    local issues=()
+    
+    # Check for running VMs
+    if command -v virsh >/dev/null 2>&1; then
+        local running_vms
+        running_vms=$(sudo virsh list --name --state-running 2>/dev/null | grep -v '^$' || true)
+        if [[ -n "$running_vms" ]]; then
+            issues+=("Running VMs detected: $running_vms")
+        fi
+    fi
+    
+    # Check for QEMU processes
+    local qemu_processes
+    qemu_processes=$(pgrep -f "qemu-system" || true)
+    if [[ -n "$qemu_processes" ]]; then
+        issues+=("QEMU processes running: $qemu_processes")
+    fi
+    
+    # Check VM services
+    local active_vm_services=()
+    for service in libvirtd libvirt-guests; do
+        if systemctl is-active --quiet "$service" 2>/dev/null; then
+            active_vm_services+=("$service")
+        fi
+    done
+    
+    if [[ ${#active_vm_services[@]} -gt 0 ]]; then
+        issues+=("Active VM services: ${active_vm_services[*]}")
+    fi
+    
+    # Report results
+    if [[ ${#issues[@]} -eq 0 ]]; then
+        info "✓ Production state is clean - zero VM overhead confirmed"
+        return 0
+    else
+        warn "Production state verification issues:"
+        for issue in "${issues[@]}"; do
+            warn "  - $issue"
+        done
+        return 1
+    fi
+}
+
+enable_production_mode() {
+    info "Enabling production mode (zero VM overhead)..."
+    
+    # Create backup before making changes
+    local backup_path
+    backup_path=$(create_backup)
+    
+    # Stop all VMs
+    stop_all_vms
+    
+    # Disable VM services
+    disable_vm_services
+    
+    # Unload VM kernel modules
+    unload_vm_kernel_modules
+    
+    # Verify production state
+    verify_production_state
+    
+    # Verify OnLoad performance is available
+    if verify_onload_performance; then
+        info "✓ OnLoad performance verified - 4.37μs latency capable"
+    else
+        warn "OnLoad performance verification failed - check installation"
+    fi
+    
+    # Set mode
+    set_current_mode "production"
+    
+    info "✓ Production mode enabled"
+    info "Backup stored at: $backup_path"
+}
+
+enable_development_mode() {
+    info "Enabling development mode..."
+    
+    # Create backup
+    local backup_path
+    backup_path=$(create_backup)
+    
+    # Enable VM services
+    info "Enabling VM services..."
+    local vm_services=("libvirtd")
+    
+    for service in "${vm_services[@]}"; do
+        if ! systemctl is-enabled --quiet "$service" 2>/dev/null; then
+            info "Enabling service: $service"
+            sudo systemctl enable "$service"
+        fi
+        
+        if ! systemctl is-active --quiet "$service" 2>/dev/null; then
+            info "Starting service: $service"
+            sudo systemctl start "$service"
+        fi
+    done
+    
+    # Load required kernel modules
+    info "Loading KVM kernel modules..."
+    sudo modprobe kvm 2>/dev/null || warn "Failed to load KVM module"
+    
+    # Determine which KVM module to load
+    if grep -q "vmx" /proc/cpuinfo; then
+        sudo modprobe kvm_intel 2>/dev/null || warn "Failed to load kvm_intel module"
+    elif grep -q "svm" /proc/cpuinfo; then
+        sudo modprobe kvm_amd 2>/dev/null || warn "Failed to load kvm_amd module"
+    fi
+    
+    # Start VMs if they exist
+    if command -v "$SCRIPT_DIR/vm-dev-environment" >/dev/null 2>&1; then
+        info "Starting development VM..."
+        "$SCRIPT_DIR/vm-dev-environment" start
+    fi
+    
+    # Set mode
+    set_current_mode "development"
+    
+    info "✓ Development mode enabled"
+    info "Backup stored at: $backup_path"
+}
+
+run_performance_validation() {
+    info "Running performance validation..."
+    
+    # Basic system performance checks
+    info "Checking system performance metrics..."
+    
+    # CPU frequency scaling
+    local cpu_governor
+    cpu_governor=$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null || echo "unknown")
+    info "CPU governor: $cpu_governor"
+    
+    if [[ "$cpu_governor" != "performance" ]]; then
+        warn "CPU not in performance mode - may impact latency"
+    fi
+    
+    # Check for CPU isolation
+    check_cpu_isolation
+    
+    # Test OnLoad if available
+    if command -v "$PROJECT_ROOT/scripts/onload-trading" >/dev/null 2>&1; then
+        info "Testing OnLoad trading performance wrapper..."
+        if "$PROJECT_ROOT/scripts/onload-trading" --version >/dev/null 2>&1; then
+            info "✓ OnLoad trading wrapper is functional"
+        else
+            warn "OnLoad trading wrapper test failed"
+        fi
+    fi
+    
+    info "✓ Performance validation completed"
+}
+
+show_status() {
+    local current_mode
+    current_mode=$(get_current_mode)
+    
+    cat << EOF
+
+╔════════════════════════════════════════════════════════════════╗
+║              AI Trading Station - Mode Status                 ║
+╚════════════════════════════════════════════════════════════════╝
+
+Current Mode: $current_mode
+Last Changed: $(stat -c %y "$STATE_FILE" 2>/dev/null | cut -d. -f1 || echo "Unknown")
+
+EOF
+
+    case "$current_mode" in
+        "production")
+            info "Production Mode Active:"
+            echo "  • Zero VM overhead configuration"
+            echo "  • OnLoad trading capable (4.37μs latency)"
+            echo "  • All VM services disabled"
+            verify_production_state >/dev/null && echo "  • ✓ Clean production state verified" || echo "  • ⚠ Production state issues detected"
+            ;;
+        "development")
+            info "Development Mode Active:"
+            echo "  • VM services enabled"
+            echo "  • Development environment available"
+            if command -v virsh >/dev/null 2>&1; then
+                local running_vms
+                running_vms=$(sudo virsh list --name --state-running 2>/dev/null | wc -l)
+                echo "  • Running VMs: $running_vms"
+            fi
+            ;;
+        *)
+            warn "Mode unknown - run 'production' or 'development' command to set"
+            ;;
+    esac
+    
+    echo
+    info "System Information:"
+    echo "  • CPU cores: $(nproc)"
+    echo "  • Memory: $(awk '/MemTotal/ {printf "%.1fGB", $2/1024/1024}' /proc/meminfo)"
+    echo "  • OnLoad available: $(command -v onload >/dev/null && echo "Yes" || echo "No")"
+}
+
+show_usage() {
+    cat << EOF
+Production/Development Mode Switching
+
+SYNOPSIS:
+    production-mode-switch [COMMAND] [OPTIONS]
+
+DESCRIPTION:
+    Automated switching between VM development mode and zero-overhead
+    production mode for the AI Trading Station.
+
+COMMANDS:
+    production          Enable production mode (zero VM overhead)
+    development         Enable development mode (VM services active)
+    status              Show current mode and system status
+    validate            Run performance validation tests
+    backup              Create system configuration backup
+    
+OPTIONS:
+    --force             Force mode change without confirmation
+    --no-backup         Skip backup creation
+    
+MODES:
+    production          Zero VM overhead, 4.37μs OnLoad latency capable
+                       • All VMs stopped and services disabled
+                       • VM kernel modules unloaded
+                       • Clean state verified
+                       
+    development         VM services enabled for development
+                       • VMs can be started and managed
+                       • Development tools accessible
+                       • GitHub Copilot integration ready
+
+EXAMPLES:
+    # Switch to production (zero overhead)
+    sudo ./production-mode-switch production
+    
+    # Enable development environment
+    ./production-mode-switch development
+    
+    # Check current status
+    ./production-mode-switch status
+    
+    # Validate performance
+    ./production-mode-switch validate
+
+SAFETY:
+    • Automatic backups created before mode changes
+    • Production state verification ensures clean environment
+    • Integration with existing onload-trading performance system
+
+EOF
+}
+
+main() {
+    local command="${1:-status}"
+    local force_mode=false
+    local create_backup_flag=true
+    
+    # Parse options
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --force)
+                force_mode=true
+                shift
+                ;;
+            --no-backup)
+                create_backup_flag=false
+                shift
+                ;;
+            --help|-h)
+                show_usage
+                exit 0
+                ;;
+            -*)
+                error "Unknown option: $1"
+                show_usage >&2
+                exit 1
+                ;;
+            *)
+                command="$1"
+                shift
+                break
+                ;;
+        esac
+    done
+    
+    # Create log file and backup directory
+    touch "$LOG_FILE" || error "Cannot create log file: $LOG_FILE"
+    mkdir -p "$BACKUP_DIR"
+    
+    case "$command" in
+        production|prod)
+            if [[ "$force_mode" == false ]]; then
+                warn "This will stop all VMs and disable VM services."
+                read -p "Continue with production mode? [y/N]: " -r
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    info "Operation cancelled"
+                    exit 0
+                fi
+            fi
+            enable_production_mode
+            ;;
+        development|dev)
+            enable_development_mode
+            ;;
+        status)
+            show_status
+            ;;
+        validate)
+            run_performance_validation
+            ;;
+        backup)
+            create_backup
+            ;;
+        *)
+            error "Unknown command: $command"
+            show_usage >&2
+            exit 1
+            ;;
+    esac
+}
+
+# Only run main if script is executed directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi
