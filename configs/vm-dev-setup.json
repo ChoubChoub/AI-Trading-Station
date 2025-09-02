@@ -1,0 +1,142 @@
+{
+  "vm_configurations": {
+    "development": {
+      "name": "ai-trading-dev-vm",
+      "os": "ubuntu-22.04-lts",
+      "specs": {
+        "memory_mb": 8192,
+        "cpu_cores": 4,
+        "disk_gb": 50,
+        "network_mode": "bridged"
+      },
+      "features": {
+        "nested_virtualization": true,
+        "hardware_acceleration": true,
+        "usb_passthrough": false,
+        "workspace_mounting": true
+      },
+      "workspace": {
+        "host_path": "/home/youssefbahloul/ai-trading-station/",
+        "vm_mount_point": "/workspace/ai-trading-station/",
+        "shared_folder_tag": "ai-trading-workspace",
+        "mount_type": "9p",
+        "access_mode": "passthrough",
+        "auto_mount": true,
+        "permissions": "developer:developer"
+      }
+    },
+    "testing": {
+      "name": "ai-trading-test-vm",
+      "os": "ubuntu-22.04-lts", 
+      "specs": {
+        "memory_mb": 4096,
+        "cpu_cores": 2,
+        "disk_gb": 30,
+        "network_mode": "NAT"
+      },
+      "features": {
+        "nested_virtualization": false,
+        "hardware_acceleration": true,
+        "usb_passthrough": false,
+        "workspace_mounting": true
+      },
+      "workspace": {
+        "host_path": "/home/youssefbahloul/ai-trading-station/",
+        "vm_mount_point": "/workspace/ai-trading-station/",
+        "shared_folder_tag": "ai-trading-workspace-test",
+        "mount_type": "9p",
+        "access_mode": "passthrough",
+        "auto_mount": true,
+        "permissions": "developer:developer"
+      }
+    }
+  },
+  "host_requirements": {
+    "min_memory_gb": 16,
+    "min_cpu_cores": 8,
+    "required_features": [
+      "VT-x",
+      "VT-d", 
+      "EPT"
+    ],
+    "recommended_hypervisor": "KVM/QEMU",
+    "workspace_requirements": {
+      "host_path_exists": true,
+      "host_path_readable": true,
+      "sufficient_disk_space": "100GB",
+      "filesystem_support": ["9p", "virtio-fs"]
+    }
+  },
+  "development_tools": {
+    "editors": [
+      "code",
+      "vim",
+      "nano"
+    ],
+    "version_control": [
+      "git",
+      "gh"
+    ],
+    "development": [
+      "build-essential",
+      "cmake",
+      "gdb",
+      "valgrind",
+      "htop",
+      "curl",
+      "wget"
+    ],
+    "github_copilot": {
+      "vscode_extension": "github.copilot",
+      "authentication_required": true,
+      "setup_script": "/workspace/ai-trading-station/setup-copilot.sh",
+      "workspace_integration": true
+    },
+    "workspace_tools": {
+      "mount_utilities": ["9p", "util-linux"],
+      "filesystem_modules": ["9pnet_virtio", "9p"],
+      "required_packages": ["linux-modules-extra-$(uname -r)"]
+    }
+  },
+  "networking": {
+    "development_ports": [8080, 8443, 3000, 5000],
+    "monitoring_ports": [9090, 9093, 3001],
+    "testing_ports": [8000, 8001, 8002],
+    "vm_access_ports": [22, 5901]
+  },
+  "performance_isolation": {
+    "vm_cpu_affinity": [4, 5, 6, 7],
+    "production_cpu_cores": [2, 3],
+    "system_cpu_cores": [0, 1]
+  },
+  "workspace_mounting": {
+    "description": "Complete AI Trading Station project workspace mounting",
+    "benefits": [
+      "Full project access inside VM",
+      "No need to clone repository in VM", 
+      "Real-time file synchronization",
+      "Development with complete codebase",
+      "Access to all scripts, configs, and modules"
+    ],
+    "supported_filesystems": {
+      "9p": {
+        "description": "9p virtio filesystem for VM sharing",
+        "performance": "good",
+        "compatibility": "excellent",
+        "setup_complexity": "low"
+      },
+      "virtio-fs": {
+        "description": "Modern high-performance filesystem sharing",
+        "performance": "excellent", 
+        "compatibility": "good",
+        "setup_complexity": "medium"
+      }
+    },
+    "mount_verification": {
+      "check_host_path": true,
+      "check_vm_mount_point": true,
+      "verify_permissions": true,
+      "test_read_write": true
+    }
+  }
+}

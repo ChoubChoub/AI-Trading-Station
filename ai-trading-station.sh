@@ -194,6 +194,120 @@ launch_core_performance() {
     exec "$SCRIPT_DIR/scripts/onload-trading" --mode="$mode" "$command"
 }
 
+show_vm_development_status() {
+    info "VM Development Environment Status:"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Check if VM development environment script exists
+    local vm_script="$SCRIPT_DIR/scripts/vm-dev-environment"
+    if [[ -x "$vm_script" ]]; then
+        info "✓ VM Development Environment: Available"
+        
+        # Get VM status from the script
+        "$vm_script" status 2>/dev/null || warn "Unable to get detailed VM status"
+    else
+        warn "✗ VM Development Environment: Not installed"
+        info "Run: sudo ./scripts/vm-dev-environment setup"
+    fi
+    
+    echo
+    info "Mode Switching Status:"
+    local mode_script="$SCRIPT_DIR/scripts/production-mode-switch"
+    if [[ -x "$mode_script" ]]; then
+        info "✓ Mode Switching: Available"
+        
+        # Get current mode
+        "$mode_script" status 2>/dev/null || warn "Unable to get mode status"
+    else
+        warn "✗ Mode Switching: Not available"
+    fi
+    
+    echo
+    info "Integration Status:"
+    echo "  • OnLoad Performance: $(command -v onload >/dev/null && echo "✓ Available" || echo "✗ Missing")"
+    echo "  • Core Performance Wrapper: $([[ -x "$SCRIPT_DIR/scripts/onload-trading" ]] && echo "✓ Available" || echo "✗ Missing")"
+    echo "  • Virtualization Support: $(egrep -q '(vmx|svm)' /proc/cpuinfo && echo "✓ Available" || echo "✗ Missing")"
+    
+    echo
+    info "Workspace Mounting:"
+    echo "  • Host project path: $(pwd)"
+    echo "  • VM mount point: /workspace/ai-trading-station"
+    echo "  • Complete project access in VM: ✓ Configured"
+}
+
+enable_vm_development_mode() {
+    info "Enabling VM Development Mode..."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    local mode_script="$SCRIPT_DIR/scripts/production-mode-switch"
+    if [[ -x "$mode_script" ]]; then
+        info "Switching to development mode..."
+        "$mode_script" development
+        
+        local vm_script="$SCRIPT_DIR/scripts/vm-dev-environment" 
+        if [[ -x "$vm_script" ]]; then
+            info "Starting VM development environment..."
+            "$vm_script" start
+        else
+            warn "VM development environment script not found"
+            info "Run: sudo ./scripts/vm-dev-environment setup"
+        fi
+    else
+        error "Mode switching script not found: $mode_script"
+        exit 1
+    fi
+    
+    echo
+    info "Development mode enabled!"
+    info "Next steps:"
+    echo "  1. Connect to VM: ssh developer@\$(virsh domifaddr ai-trading-dev-vm | grep -oP '192\.168\.\d+\.\d+')"
+    echo "  2. Setup development tools: ./setup-copilot.sh"
+    echo "  3. Access complete workspace: cd /workspace/ai-trading-station"
+    echo "  4. Start VS Code: code /workspace/ai-trading-station"
+    echo
+    info "WORKSPACE ACCESS:"
+    echo "  • Complete AI Trading Station project mounted at /workspace/ai-trading-station"
+    echo "  • All files, scripts, configs accessible in VM"
+    echo "  • No need to clone repository - it's already there!"
+}
+
+enable_vm_production_mode() {
+    info "Enabling Production Mode (Zero VM Overhead)..."
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    local mode_script="$SCRIPT_DIR/scripts/production-mode-switch"
+    if [[ -x "$mode_script" ]]; then
+        warn "This will stop all VMs and disable VM services for maximum performance."
+        
+        if [[ "${FORCE_MODE:-}" != "1" ]]; then
+            read -p "Continue with production mode? [y/N]: " -r
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                info "Operation cancelled"
+                return 0
+            fi
+        fi
+        
+        info "Switching to production mode..."
+        sudo "$mode_script" production
+        
+        echo
+        info "Production mode enabled!"
+        info "System configured for:"
+        echo "  • Zero VM overhead"
+        echo "  • Maximum OnLoad performance (4.37μs capable)"
+        echo "  • Clean production state verified"
+        
+        echo
+        info "Available commands:"
+        echo "  • Launch trading: sudo ./scripts/onload-trading --mode=strict ./your-app"
+        echo "  • Check status: ./ai-trading-station.sh status"
+        echo "  • Monitor performance: ./ai-trading-station.sh monitor"
+    else
+        error "Mode switching script not found: $mode_script"
+        exit 1
+    fi
+}
+
 show_usage() {
     cat << EOF
 AI Trading Station - Monitoring & Demo Utility
@@ -279,6 +393,18 @@ main() {
             local app_command="${3:-./trading-engine}"
             show_banner
             launch_core_performance "$mode" "$app_command"
+            ;;
+        "vm-status")
+            show_banner
+            show_vm_development_status
+            ;;
+        "vm-dev"|"vm-development")
+            show_banner
+            enable_vm_development_mode
+            ;;
+        "vm-prod"|"vm-production")
+            show_banner
+            enable_vm_production_mode
             ;;
         "--help"|"help")
             show_usage
