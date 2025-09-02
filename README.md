@@ -193,6 +193,36 @@ hwlatdetect --duration=300
 sudo ./scripts/onload-trading --mode=strict --cores=2,3 ./your-production-trading-app
 ```
 
+## 🖥️ VM Development Environment
+
+For **safe development and testing** without affecting production systems:
+
+### Quick VM Setup
+```bash
+# Set up isolated VM environment
+./vm-setup.sh
+
+# Manage VM lifecycle
+./vm-manager.sh start    # Start development VM
+./vm-manager.sh status   # Check VM and workspace status
+./vm-manager.sh ssh      # Connect to VM
+./vm-manager.sh stop     # Stop VM
+```
+
+### VM Specifications
+- **Memory**: 32GB allocated to VM
+- **CPU**: 8 dedicated cores
+- **Storage**: 100GB virtual disk
+- **OS**: Ubuntu 22.04 LTS
+- **Workspace**: `~/ai-trading-station/` ↔ `/workspace/ai-trading-station/`
+
+### Development Workflow
+1. **Develop on host**: Use your preferred IDE/tools
+2. **Test in VM**: Run trading components safely in isolation
+3. **Iterate quickly**: Changes sync automatically via 9p filesystem
+
+**📖 Complete Guide**: [VM-DEVELOPMENT-GUIDE.md](VM-DEVELOPMENT-GUIDE.md)
+
 ## 🔍 Troubleshooting
 
 ### Common Issues
@@ -214,6 +244,19 @@ watch -n1 'cat /proc/interrupts | head -20'
 
 # Real-time performance monitoring
 ./ai-trading-station.sh monitor
+```
+
+### VM Development Issues
+```bash
+# Check VM status and workspace
+./vm-manager.sh status
+
+# View VM logs for debugging
+./vm-manager.sh logs
+
+# Test workspace mounting inside VM
+./vm-manager.sh ssh
+# Inside VM: ls -la /workspace/ai-trading-station
 ```
 
 
