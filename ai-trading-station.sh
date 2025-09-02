@@ -317,6 +317,7 @@ SYNOPSIS:
 
 DESCRIPTION:
     User-friendly monitoring and demo tool for the AI Trading Station.
+    Includes VM development environment management with complete workspace mounting.
     
     NOTE: This is a monitoring utility. Core performance is delivered by
           scripts/onload-trading which enables the 4.37μs latency achievement.
@@ -326,11 +327,25 @@ COMMANDS:
     demo               Run trading latency simulation demo
     monitor            Start real-time performance monitoring
     launch [MODE]      Launch trading application via core performance wrapper
+    vm-status          Show VM development environment status
+    vm-dev             Start development mode (enable VM with workspace)
+    vm-prod            Switch to production mode (zero VM overhead)
     
 LAUNCH MODES (delegated to scripts/onload-trading):
     strict             Full optimization: OnLoad + CPU isolation (4.37μs)
     onload-only        OnLoad bypass only (8-12μs)
     auto               Auto-detect best configuration (default)
+
+VM WORKSPACE MOUNTING:
+    The VM development environment mounts the COMPLETE AI Trading Station
+    project directory inside the VM for full development access:
+    
+    Host Path:         $(pwd)
+    VM Mount Point:    /workspace/ai-trading-station
+    Benefits:          • Complete project access in VM
+                      • Real-time file synchronization
+                      • No need to clone repository in VM
+                      • Full development with all files accessible
 
 EXAMPLES:
     # Show system status and performance metrics
@@ -339,22 +354,40 @@ EXAMPLES:
     # Run latency demonstration
     ./ai-trading-station.sh demo
     
+    # VM development environment management
+    ./ai-trading-station.sh vm-status
+    ./ai-trading-station.sh vm-dev      # Enable development mode with workspace
+    ./ai-trading-station.sh vm-prod     # Enable production mode (zero overhead)
+    
     # Launch trading app with auto-detection (delegates to onload-trading)
     ./ai-trading-station.sh launch auto ./my-trading-app
     
-    # Launch with strict mode for maximum performance
+    # Launch with strict mode for maximum performance (production mode only)
     sudo ./ai-trading-station.sh launch strict ./trading-engine
 
 ARCHITECTURE:
     Core Performance Technology:
-    ├── scripts/onload-trading     ← THE PERFORMANCE BREAKTHROUGH (4.37μs)
+    ├── scripts/onload-trading          ← THE PERFORMANCE BREAKTHROUGH (4.37μs)
     │   ├── OnLoad kernel bypass
     │   ├── CPU isolation (cores 2,3)
     │   ├── Zero-latency polling
     │   └── Production safety checks
     
+    VM Development Environment:
+    ├── scripts/vm-dev-environment      ← VM management & GitHub Copilot integration
+    ├── scripts/production-mode-switch  ← Automated mode switching
+    ├── scripts/vm-setup-ubuntu.sh      ← Ubuntu 22.04 VM setup with workspace
+    └── configs/vm-dev-setup.json       ← VM configuration with workspace mounting
+    
     User Tools:
-    └── ai-trading-station.sh      ← This monitoring/demo utility
+    └── ai-trading-station.sh           ← This monitoring/demo utility
+
+WORKSPACE INTEGRATION:
+    The VM environment provides complete project access through workspace mounting:
+    • All source files, scripts, and configurations available in VM
+    • Changes sync in real-time between host and VM
+    • Develop with full project context and GitHub Copilot
+    • No repository cloning needed - everything is already there
 
 EOF
 }
