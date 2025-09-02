@@ -1,0 +1,518 @@
+#!/bin/bash
+# ============================================================================
+# VM Development Environment Manager
+# ============================================================================
+# PURPOSE: Comprehensive VM management for safe development while preserving
+#          ultra-low latency production environment (4.37μs)
+# INTEGRATION: Works alongside existing scripts/onload-trading system
+# ============================================================================
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+readonly CONFIG_FILE="$PROJECT_ROOT/configs/vm-dev-setup.json"
+readonly LOG_FILE="${LOG_FILE:-$HOME/.vm-dev-environment.log}"
+readonly VM_STATE_FILE="$HOME/.vm-dev-state"
+readonly LOCK_FILE="/tmp/vm-dev-environment.lock"
+
+# Colors for output
+readonly RED='\033[0;31m'
+readonly GREEN='\033[0;32m'
+readonly YELLOW='\033[1;33m'
+readonly BLUE='\033[0;34m'
+readonly NC='\033[0m' # No Color
+
+# VM Management Configuration
+readonly DEFAULT_VM_NAME="ai-trading-dev-vm"
+readonly HYPERVISOR_CHECK_TIMEOUT=30
+readonly VM_STARTUP_TIMEOUT=120
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "${LOG_FILE}"
+}
+
+info() {
+    echo -e "${GREEN}[INFO]${NC} $*"
+}
+
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $*"
+}
+
+error() {
+    echo -e "${RED}[ERROR]${NC} $*" >&2
+}
+
+debug() {
+    if [[ "${DEBUG:-}" == "1" ]]; then
+        echo -e "${BLUE}[DEBUG]${NC} $*"
+    fi
+}
+
+show_banner() {
+    cat << 'EOF'
+╔════════════════════════════════════════════════════════════════╗
+║               VM Development Environment Manager               ║
+║            Safe Development + Production Performance           ║
+╠════════════════════════════════════════════════════════════════╣
+║  Production: scripts/onload-trading (4.37μs latency)          ║
+║  Development: VM-based isolation with GitHub Copilot          ║
+╚════════════════════════════════════════════════════════════════╝
+EOF
+}
+
+acquire_lock() {
+    local timeout="${1:-10}"
+    local count=0
+    
+    while ! (set -C; echo $$ > "$LOCK_FILE") 2>/dev/null; do
+        if [[ $count -ge $timeout ]]; then
+            error "Failed to acquire lock after ${timeout}s. Another instance may be running."
+            exit 1
+        fi
+        sleep 1
+        ((count++))
+    done
+    
+    # Ensure lock is released on exit
+    trap 'rm -f "$LOCK_FILE"' EXIT
+}
+
+release_lock() {
+    rm -f "$LOCK_FILE"
+    trap - EXIT
+}
+
+check_virtualization_support() {
+    info "Checking virtualization support..."
+    
+    # Check CPU virtualization features
+    if ! grep -E "(vmx|svm)" /proc/cpuinfo >/dev/null 2>&1; then
+        error "CPU virtualization not supported. Enable VT-x/AMD-V in BIOS."
+        return 1
+    fi
+    
+    # Check if KVM kernel module is available
+    if ! lsmod | grep -q kvm; then
+        warn "KVM kernel module not loaded. Attempting to load..."
+        if ! sudo modprobe kvm 2>/dev/null; then
+            error "Failed to load KVM kernel module."
+            return 1
+        fi
+    fi
+    
+    # Check for virtualization tools
+    local missing_tools=()
+    for tool in qemu-system-x86_64 virt-manager libvirtd; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            missing_tools+=("$tool")
+        fi
+    done
+    
+    if [[ ${#missing_tools[@]} -gt 0 ]]; then
+        warn "Missing virtualization tools: ${missing_tools[*]}"
+        info "Install with: sudo apt install qemu-kvm libvirt-daemon-system libvirt-clients virt-manager"
+        return 1
+    fi
+    
+    info "✓ Virtualization support verified"
+    return 0
+}
+
+check_system_resources() {
+    info "Checking system resources..."
+    
+    # Check memory
+    local total_mem_kb
+    total_mem_kb=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+    local total_mem_gb=$((total_mem_kb / 1024 / 1024))
+    
+    if [[ $total_mem_gb -lt 16 ]]; then
+        warn "System has ${total_mem_gb}GB RAM. Recommended: 16GB+ for VM development"
+    fi
+    
+    # Check CPU cores
+    local cpu_cores
+    cpu_cores=$(nproc)
+    
+    if [[ $cpu_cores -lt 8 ]]; then
+        warn "System has ${cpu_cores} CPU cores. Recommended: 8+ for VM + production isolation"
+    fi
+    
+    # Check available disk space
+    local available_space_gb
+    available_space_gb=$(df / | awk 'NR==2 {printf "%.0f", $4/1024/1024}')
+    
+    if [[ $available_space_gb -lt 100 ]]; then
+        warn "Available disk space: ${available_space_gb}GB. Recommended: 100GB+ for VM images"
+    fi
+    
+    info "✓ System resources: ${total_mem_gb}GB RAM, ${cpu_cores} cores, ${available_space_gb}GB disk"
+}
+
+get_vm_status() {
+    local vm_name="${1:-$DEFAULT_VM_NAME}"
+    
+    if ! command -v virsh >/dev/null 2>&1; then
+        echo "unknown"
+        return
+    fi
+    
+    local status
+    status=$(sudo virsh domstate "$vm_name" 2>/dev/null || echo "undefined")
+    echo "$status"
+}
+
+get_current_mode() {
+    if [[ -f "$VM_STATE_FILE" ]]; then
+        cat "$VM_STATE_FILE"
+    else
+        echo "production"
+    fi
+}
+
+set_current_mode() {
+    local mode="$1"
+    echo "$mode" > "$VM_STATE_FILE"
+    log "Mode set to: $mode"
+}
+
+verify_production_clean() {
+    info "Verifying clean production state..."
+    
+    local issues=()
+    
+    # Check for running VMs
+    if command -v virsh >/dev/null 2>&1; then
+        local running_vms
+        running_vms=$(sudo virsh list --name --state-running 2>/dev/null | grep -v '^$' || true)
+        if [[ -n "$running_vms" ]]; then
+            issues+=("Running VMs detected: $running_vms")
+        fi
+    fi
+    
+    # Check VM-related kernel modules
+    local vm_modules=("kvm_intel" "kvm_amd" "vhost_net")
+    for module in "${vm_modules[@]}"; do
+        if lsmod | grep -q "^$module"; then
+            debug "VM kernel module loaded: $module (may be acceptable)"
+        fi
+    done
+    
+    # Check for VM processes
+    local vm_processes
+    vm_processes=$(pgrep -f "qemu-system" || true)
+    if [[ -n "$vm_processes" ]]; then
+        issues+=("QEMU processes running: $vm_processes")
+    fi
+    
+    if [[ ${#issues[@]} -eq 0 ]]; then
+        info "✓ Production environment is clean"
+        return 0
+    else
+        warn "Production environment issues detected:"
+        for issue in "${issues[@]}"; do
+            warn "  - $issue"
+        done
+        return 1
+    fi
+}
+
+start_development_mode() {
+    info "Starting development mode..."
+    
+    acquire_lock
+    
+    # Verify system is ready
+    if ! check_virtualization_support; then
+        error "Virtualization support check failed"
+        release_lock
+        return 1
+    fi
+    
+    check_system_resources
+    
+    # Start libvirt service
+    if ! systemctl is-active --quiet libvirtd; then
+        info "Starting libvirt daemon..."
+        sudo systemctl start libvirtd
+        sleep 2
+    fi
+    
+    # Check if VM exists and start it
+    local vm_status
+    vm_status=$(get_vm_status)
+    
+    case "$vm_status" in
+        "running")
+            info "✓ Development VM is already running"
+            ;;
+        "shut off")
+            info "Starting development VM..."
+            sudo virsh start "$DEFAULT_VM_NAME"
+            sleep 5
+            ;;
+        "undefined")
+            warn "Development VM not found. Run 'setup' command first."
+            release_lock
+            return 1
+            ;;
+        *)
+            warn "VM in unexpected state: $vm_status"
+            ;;
+    esac
+    
+    set_current_mode "development"
+    info "✓ Development mode active"
+    release_lock
+}
+
+stop_development_mode() {
+    info "Stopping development mode..."
+    
+    acquire_lock
+    
+    local vm_status
+    vm_status=$(get_vm_status)
+    
+    if [[ "$vm_status" == "running" ]]; then
+        info "Shutting down development VM..."
+        sudo virsh shutdown "$DEFAULT_VM_NAME"
+        
+        # Wait for clean shutdown
+        local timeout=60
+        local count=0
+        while [[ $(get_vm_status) == "running" ]] && [[ $count -lt $timeout ]]; do
+            sleep 2
+            ((count += 2))
+        done
+        
+        if [[ $(get_vm_status) == "running" ]]; then
+            warn "VM did not shut down cleanly, forcing shutdown..."
+            sudo virsh destroy "$DEFAULT_VM_NAME"
+        fi
+    fi
+    
+    set_current_mode "production"
+    info "✓ Development mode stopped"
+    release_lock
+}
+
+enable_production_mode() {
+    info "Enabling production mode (zero VM overhead)..."
+    
+    acquire_lock
+    
+    # Ensure all VMs are stopped
+    stop_development_mode
+    
+    # Optionally stop libvirt daemon to minimize overhead
+    if systemctl is-active --quiet libvirtd; then
+        info "Stopping libvirt daemon for minimal overhead..."
+        sudo systemctl stop libvirtd
+    fi
+    
+    # Verify clean state
+    verify_production_clean
+    
+    set_current_mode "production"
+    info "✓ Production mode enabled with zero VM overhead"
+    release_lock
+}
+
+show_status() {
+    show_banner
+    echo
+    
+    info "Current Mode: $(get_current_mode)"
+    info "VM Status: $(get_vm_status)"
+    
+    echo
+    info "System Resources:"
+    local total_mem_gb cpu_cores
+    total_mem_gb=$(awk '/MemTotal/ {printf "%.1f", $2/1024/1024}' /proc/meminfo)
+    cpu_cores=$(nproc)
+    echo "  Memory: ${total_mem_gb}GB total"
+    echo "  CPU Cores: $cpu_cores total"
+    
+    if command -v virsh >/dev/null 2>&1; then
+        echo
+        info "Virtualization Status:"
+        if systemctl is-active --quiet libvirtd; then
+            echo "  libvirtd: active"
+        else
+            echo "  libvirtd: inactive"
+        fi
+        
+        local running_vms
+        running_vms=$(sudo virsh list --name --state-running 2>/dev/null | grep -v '^$' | wc -l)
+        echo "  Running VMs: $running_vms"
+    fi
+    
+    echo
+    info "Production Performance Status:"
+    if [[ -x "$PROJECT_ROOT/scripts/onload-trading" ]]; then
+        echo "  onload-trading: ✓ Available (4.37μs capable)"
+    else
+        echo "  onload-trading: ✗ Not found"
+    fi
+    
+    if [[ "$(get_current_mode)" == "production" ]]; then
+        verify_production_clean >/dev/null 2>&1 && echo "  Production environment: ✓ Clean" || echo "  Production environment: ⚠ Issues detected"
+    fi
+}
+
+setup_vm() {
+    info "Setting up development VM..."
+    
+    if ! check_virtualization_support; then
+        error "Virtualization support not available"
+        return 1
+    fi
+    
+    # Check if VM already exists
+    local vm_status
+    vm_status=$(get_vm_status)
+    
+    if [[ "$vm_status" != "undefined" ]]; then
+        warn "VM '$DEFAULT_VM_NAME' already exists (status: $vm_status)"
+        read -p "Recreate VM? This will destroy existing data [y/N]: " -r
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            info "Setup cancelled"
+            return 0
+        fi
+        
+        info "Removing existing VM..."
+        sudo virsh destroy "$DEFAULT_VM_NAME" 2>/dev/null || true
+        sudo virsh undefine "$DEFAULT_VM_NAME" 2>/dev/null || true
+    fi
+    
+    # Call the VM setup script
+    local setup_script="$SCRIPT_DIR/vm-setup-ubuntu.sh"
+    if [[ -x "$setup_script" ]]; then
+        info "Running VM setup script..."
+        "$setup_script" "$DEFAULT_VM_NAME"
+    else
+        error "VM setup script not found: $setup_script"
+        return 1
+    fi
+    
+    info "✓ VM setup completed"
+}
+
+show_usage() {
+    cat << EOF
+VM Development Environment Manager
+
+SYNOPSIS:
+    vm-dev-environment [COMMAND] [OPTIONS]
+
+DESCRIPTION:
+    Manages VM-based development environment while preserving ultra-low
+    latency production performance (4.37μs via scripts/onload-trading).
+
+COMMANDS:
+    setup               Create and configure development VM
+    start               Start development mode (enable VM)
+    stop                Stop development mode (shutdown VM)  
+    production          Enable production mode (zero VM overhead)
+    status              Show current status and system information
+    verify              Verify production environment is clean
+    
+OPTIONS:
+    --debug             Enable debug output
+    --vm-name NAME      Use custom VM name (default: $DEFAULT_VM_NAME)
+
+MODES:
+    development         VM active, development tools available
+    production          VM disabled, zero overhead, 4.37μs latency capable
+
+EXAMPLES:
+    # Initial setup
+    sudo ./vm-dev-environment setup
+    
+    # Switch to development mode
+    ./vm-dev-environment start
+    
+    # Switch to production mode (zero overhead)
+    ./vm-dev-environment production
+    
+    # Check current status
+    ./vm-dev-environment status
+
+INTEGRATION:
+    This tool works alongside the existing AI Trading Station:
+    • Production: scripts/onload-trading delivers 4.37μs latency
+    • Development: VM provides isolated environment for safe testing
+    • Workspace: Complete project mounted at /workspace/ai-trading-station
+    • Mode switching ensures zero production impact
+
+EOF
+}
+
+main() {
+    local command="${1:-status}"
+    
+    # Handle options
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --debug)
+                export DEBUG=1
+                shift
+                ;;
+            --vm-name)
+                readonly DEFAULT_VM_NAME="$2"
+                shift 2
+                ;;
+            --help|-h)
+                show_usage
+                exit 0
+                ;;
+            -*)
+                error "Unknown option: $1"
+                show_usage >&2
+                exit 1
+                ;;
+            *)
+                command="$1"
+                shift
+                break
+                ;;
+        esac
+    done
+    
+    # Create log file
+    touch "$LOG_FILE" || error "Cannot create log file: $LOG_FILE"
+    
+    case "$command" in
+        setup)
+            setup_vm
+            ;;
+        start|dev|development)
+            start_development_mode
+            ;;
+        stop)
+            stop_development_mode
+            ;;
+        production|prod)
+            enable_production_mode
+            ;;
+        status)
+            show_status
+            ;;
+        verify)
+            verify_production_clean
+            ;;
+        *)
+            error "Unknown command: $command"
+            show_usage >&2
+            exit 1
+            ;;
+    esac
+}
+
+# Only run main if script is executed directly
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

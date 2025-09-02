@@ -1,0 +1,99 @@
+{
+  "vm_configurations": {
+    "development": {
+      "name": "ai-trading-dev-vm",
+      "os": "ubuntu-22.04-lts",
+      "specs": {
+        "memory_mb": 8192,
+        "cpu_cores": 4,
+        "disk_gb": 50,
+        "network_mode": "bridged"
+      },
+      "features": {
+        "nested_virtualization": true,
+        "hardware_acceleration": true,
+        "usb_passthrough": false
+      },
+      "workspace": {
+        "host_path": "/home/youssefbahloul/ai-trading-station",
+        "vm_mount_point": "/workspace/ai-trading-station",
+        "mount_tag": "ai_trading_workspace",
+        "readonly": false,
+        "auto_mount": true
+      }
+    },
+    "testing": {
+      "name": "ai-trading-test-vm",
+      "os": "ubuntu-22.04-lts", 
+      "specs": {
+        "memory_mb": 4096,
+        "cpu_cores": 2,
+        "disk_gb": 30,
+        "network_mode": "NAT"
+      },
+      "features": {
+        "nested_virtualization": false,
+        "hardware_acceleration": true,
+        "usb_passthrough": false
+      },
+      "workspace": {
+        "host_path": "/home/youssefbahloul/ai-trading-station",
+        "vm_mount_point": "/workspace/ai-trading-station",
+        "mount_tag": "ai_trading_workspace",
+        "readonly": true,
+        "auto_mount": true
+      }
+    }
+  },
+  "host_requirements": {
+    "min_memory_gb": 16,
+    "min_cpu_cores": 8,
+    "required_features": [
+      "VT-x",
+      "VT-d", 
+      "EPT"
+    ],
+    "recommended_hypervisor": "KVM/QEMU"
+  },
+  "development_tools": {
+    "editors": [
+      "code",
+      "vim",
+      "nano"
+    ],
+    "version_control": [
+      "git",
+      "gh"
+    ],
+    "development": [
+      "build-essential",
+      "cmake",
+      "gdb",
+      "valgrind",
+      "htop",
+      "curl",
+      "wget"
+    ],
+    "github_copilot": {
+      "vscode_extension": "github.copilot",
+      "authentication_required": true,
+      "setup_script": "/opt/ai-trading-station/scripts/setup-copilot.sh"
+    }
+  },
+  "networking": {
+    "development_ports": [8080, 8443, 3000, 5000],
+    "monitoring_ports": [9090, 9093, 3001],
+    "testing_ports": [8000, 8001, 8002]
+  },
+  "performance_isolation": {
+    "vm_cpu_affinity": [4, 5, 6, 7],
+    "production_cpu_cores": [2, 3],
+    "system_cpu_cores": [0, 1]
+  },
+  "workspace_mounting": {
+    "filesystem_type": "virtio-9p",
+    "mount_options": "trans=virtio,version=9p2000.L,rw,_netdev",
+    "security_model": "mapped",
+    "cache_mode": "loose"
+  }
+}
