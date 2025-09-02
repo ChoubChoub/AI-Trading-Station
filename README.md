@@ -216,18 +216,108 @@ watch -n1 'cat /proc/interrupts | head -20'
 ./ai-trading-station.sh monitor
 ```
 
----
 
-## 🎯 Summary
+## Core Components
 
-The **`scripts/onload-trading` wrapper is the core technological innovation** that enables our 4.37μs mean trading latency through the combination of:
+### Primary Performance Component: `scripts/onload-trading`
 
-1. **OnLoad kernel bypass** (primary performance gain)
-2. **CPU core isolation** (eliminates context switching jitter)
-3. **Zero-latency polling** (eliminates interrupt overhead)
-4. **Production-grade safety** (ensures reliable operation)
+**⚡ `scripts/onload-trading` is the central, critical component of the system.**
 
-The `ai-trading-station.sh` script serves as a user-friendly monitoring and demo utility, while all performance-critical operations are handled by the core `scripts/onload-trading` wrapper.
+This script is the technological breakthrough that enables our ultra-low latency performance:
+- **Mean latency**: 4.37μs
+- **P95 latency**: 4.53μs  
+- **P99 latency**: 4.89μs
 
-**For maximum performance: Use `scripts/onload-trading` directly.**  
-**For monitoring and demos: Use `ai-trading-station.sh`.**
+Key capabilities:
+- **OnLoad acceleration**: Kernel bypass for network I/O
+- **CPU isolation**: Dedicated cores for trading workload
+- **IRQ isolation**: Interrupt handling optimization
+- **Memory affinity**: NUMA-aware memory allocation
+
+### Supporting Component: `ai-trading-station.sh`
+
+**📊 `ai-trading-station.sh` is a user-friendly utility for monitoring and demonstration purposes only.**
+
+This script is NOT the system launcher, but rather provides:
+- System health monitoring
+- Performance metrics display
+- Development environment checks
+- Demo mode for testing and validation
+
+**Important**: The core trading functionality runs through `scripts/onload-trading`, not through the monitoring utility.
+
+## Performance Specifications
+
+### Latency Targets
+- **Hardware jitter**: <50μs
+- **Inference variance**: <2ms
+- **Order execution**: ≤XXms
+- **Memory consistency**: <2ns variance
+
+### System Stability
+- **Uptime requirement**: 99.95% during trading hours
+- **Thermal stability**: Zero throttling events
+- **Memory reliability**: VRAM-related failure rate <0.01%
+
+## Module Documentation
+
+The system is implemented through four specialized modules:
+
+### Module 1: Development Environment Setup
+- **Purpose**: VS Code & GitHub Copilot installation
+- **Impact**: <0.1% CPU overhead
+- **Complexity**: 2/5
+
+### Module 2: BIOS & Hardware Optimization
+- **Purpose**: Eliminate hardware-level variability
+- **Target**: <50μs hardware jitter
+- **Benefit**: -125μs worst-case jitter reduction
+
+### Module 3: GPU Configuration
+- **Purpose**: Deterministic AI inference
+- **Target**: <2ms variance in inference timing
+- **Optimization**: Consumer GPU variance reduced by 15-25%
+
+### Module 4: System Performance Tuning
+- **Purpose**: Real-time system optimization
+- **Focus**: Kernel and scheduler tuning
+- **Result**: Consistent sub-5μs execution timing
+
+## Quick Start
+
+### Prerequisites
+- Ubuntu 22.04 LTS
+- Dual RTX XXXX Pro GPUs (XXGB VRAM each)
+- ASUS ROG Maximus Z790 Extreme motherboard (or equivalent)
+- Physical access for BIOS configuration
+
+### Installation Process
+1. Follow Module 1 for development environment setup
+2. Execute Module 2 for BIOS optimization (requires physical access)
+3. Configure GPU subsystem using Module 3
+4. Apply system-level tuning from Module 4
+5. Deploy the core `scripts/onload-trading` component
+
+### Validation
+- Verify latency targets with provided measurement tools
+- Confirm thermal stability under load
+- Validate inference timing consistency
+
+## System Requirements
+
+### Hardware
+- **CPU**: Intel 13th gen or equivalent with performance cores
+- **GPU**: 2× RTX XXXX Pro (XXXGB total VRAM)
+- **Memory**: 64GB DDR5 with low-latency timing
+- **Storage**: NVMe SSD for low I/O latency
+- **Network**: 10Gbps+ for market data ingestion
+
+### Software
+- **OS**: Ubuntu 22.04 LTS (real-time kernel)
+- **Runtime**: Python 3.9+, PyTorch, CUDA toolkit
+- **Development**: VS Code, GitHub Copilot
+- **Monitoring**: Custom performance measurement tools
+
+
+
+
