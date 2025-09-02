@@ -12,7 +12,7 @@ set -euo pipefail
 SCRIPT_VERSION="1.0.0"
 DEFAULT_CORES="2,3"
 DEFAULT_MODE="auto"
-LOG_FILE="/var/log/onload-trading.log"
+LOG_FILE="${HOME}/.local/share/ai-trading-station/onload-trading.log"
 
 # Colors for output
 RED='\033[0;31m'
