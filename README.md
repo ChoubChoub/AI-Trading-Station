@@ -286,7 +286,7 @@ The system is implemented through four specialized modules:
 ## Quick Start
 
 ### Prerequisites
-- Ubuntu 22.04 LTS
+- Ubuntu 24.04 LTS
 - Dual RTX XXXX Pro GPUs (XXGB VRAM each)
 - ASUS ROG Maximus Z790 Extreme motherboard (or equivalent)
 - Physical access for BIOS configuration
@@ -313,7 +313,7 @@ The system is implemented through four specialized modules:
 - **Network**: 10Gbps+ for market data ingestion
 
 ### Software
-- **OS**: Ubuntu 22.04 LTS (real-time kernel)
+- **OS**: Ubuntu 24.04 LTS (real-time kernel)
 - **Runtime**: Python 3.9+, PyTorch, CUDA toolkit
 - **Development**: VS Code, GitHub Copilot
 - **Monitoring**: Custom performance measurement tools

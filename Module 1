@@ -19,7 +19,7 @@ Implementation Complexity	2/5	Command count analysis
 Rollback Time	45 seconds	Timed test execution
 Prerequisites
 
-    Ubuntu 22.04 LTS installed
+    Ubuntu 24.04 LTS installed
     Internet connection for package downloads
     User with sudo privileges
     GitHub account with Copilot subscription
