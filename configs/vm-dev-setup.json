@@ -13,6 +13,13 @@
         "nested_virtualization": true,
         "hardware_acceleration": true,
         "usb_passthrough": false
+      },
+      "workspace": {
+        "host_path": "/home/youssefbahloul/ai-trading-station",
+        "vm_mount_point": "/workspace/ai-trading-station",
+        "mount_tag": "ai_trading_workspace",
+        "readonly": false,
+        "auto_mount": true
       }
     },
     "testing": {
@@ -28,6 +35,13 @@
         "nested_virtualization": false,
         "hardware_acceleration": true,
         "usb_passthrough": false
+      },
+      "workspace": {
+        "host_path": "/home/youssefbahloul/ai-trading-station",
+        "vm_mount_point": "/workspace/ai-trading-station",
+        "mount_tag": "ai_trading_workspace",
+        "readonly": true,
+        "auto_mount": true
       }
     }
   },
@@ -75,5 +89,11 @@
     "vm_cpu_affinity": [4, 5, 6, 7],
     "production_cpu_cores": [2, 3],
     "system_cpu_cores": [0, 1]
+  },
+  "workspace_mounting": {
+    "filesystem_type": "virtio-9p",
+    "mount_options": "trans=virtio,version=9p2000.L,rw,_netdev",
+    "security_model": "mapped",
+    "cache_mode": "loose"
   }
 }

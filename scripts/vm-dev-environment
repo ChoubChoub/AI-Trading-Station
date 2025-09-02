@@ -445,6 +445,7 @@ INTEGRATION:
     This tool works alongside the existing AI Trading Station:
     • Production: scripts/onload-trading delivers 4.37μs latency
     • Development: VM provides isolated environment for safe testing
+    • Workspace: Complete project mounted at /workspace/ai-trading-station
     • Mode switching ensures zero production impact
 
 EOF

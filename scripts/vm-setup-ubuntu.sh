@@ -28,6 +28,41 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "${LOG_FILE}"
 }
 
+get_workspace_config() {
+    local config_key="$1"
+    if [[ -f "$CONFIG_FILE" ]] && command -v python3 >/dev/null 2>&1; then
+        python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        config = json.load(f)
+    workspace = config.get('vm_configurations', {}).get('development', {}).get('workspace', {})
+    print(workspace.get('$config_key', ''))
+except:
+    print('')
+"
+    else
+        echo ""
+    fi
+}
+
+get_mount_options() {
+    if [[ -f "$CONFIG_FILE" ]] && command -v python3 >/dev/null 2>&1; then
+        python3 -c "
+import json
+try:
+    with open('$CONFIG_FILE') as f:
+        config = json.load(f)
+    mounting = config.get('workspace_mounting', {})
+    print(mounting.get('mount_options', 'trans=virtio,version=9p2000.L,rw,_netdev'))
+except:
+    print('trans=virtio,version=9p2000.L,rw,_netdev')
+"
+    else
+        echo "trans=virtio,version=9p2000.L,rw,_netdev"
+    fi
+}
+
 info() {
     echo -e "\033[0;32m[INFO]\033[0m $*"
 }
@@ -192,20 +227,42 @@ install_vm() {
     info "Installing VM: $vm_name"
     info "This process will take 20-30 minutes..."
     
-    # Create VM with virt-install
-    virt-install \
-        --name="$vm_name" \
-        --memory="$VM_MEMORY" \
-        --vcpus="$VM_CPUS" \
-        --disk path="$disk_path",format=qcow2,size=50 \
-        --cdrom="$iso_path" \
-        --os-variant=ubuntu22.04 \
-        --network bridge="$BRIDGE_NAME" \
-        --graphics vnc,listen=0.0.0.0,port=5901 \
-        --console pty,target_type=serial \
-        --extra-args="console=ttyS0,115200n8" \
-        --noautoconsole \
-        --wait=-1
+    # Get workspace configuration
+    local host_path
+    local mount_tag
+    host_path=$(get_workspace_config "host_path")
+    mount_tag=$(get_workspace_config "mount_tag")
+    
+    # Build virt-install command with optional filesystem sharing
+    local virt_install_cmd="virt-install"
+    virt_install_cmd+=" --name=\"$vm_name\""
+    virt_install_cmd+=" --memory=\"$VM_MEMORY\""
+    virt_install_cmd+=" --vcpus=\"$VM_CPUS\""
+    virt_install_cmd+=" --disk path=\"$disk_path\",format=qcow2,size=50"
+    virt_install_cmd+=" --cdrom=\"$iso_path\""
+    virt_install_cmd+=" --os-variant=ubuntu22.04"
+    virt_install_cmd+=" --network bridge=\"$BRIDGE_NAME\""
+    virt_install_cmd+=" --graphics vnc,listen=0.0.0.0,port=5901"
+    virt_install_cmd+=" --console pty,target_type=serial"
+    virt_install_cmd+=" --extra-args=\"console=ttyS0,115200n8\""
+    virt_install_cmd+=" --noautoconsole"
+    virt_install_cmd+=" --wait=-1"
+    
+    # Add filesystem sharing if workspace is configured
+    if [[ -n "$host_path" && -n "$mount_tag" ]]; then
+        # Check if host path exists
+        if [[ -d "$host_path" ]]; then
+            info "Adding workspace sharing: $host_path -> $mount_tag"
+            virt_install_cmd+=" --filesystem source=\"$host_path\",target=\"$mount_tag\",mode=mapped"
+        else
+            warn "Host workspace path does not exist: $host_path"
+            info "VM will be created without workspace mounting"
+        fi
+    fi
+    
+    # Execute the virt-install command
+    info "Running: $virt_install_cmd"
+    eval "$virt_install_cmd"
     
     info "✓ VM installation completed"
 }
@@ -388,6 +445,96 @@ EOF
 
     chmod +x "$vm_dir/connect-vm.sh"
     
+    # Create workspace mounting script for use inside VM
+    local vm_mount_point
+    local mount_tag
+    local mount_options
+    vm_mount_point=$(get_workspace_config "vm_mount_point")
+    mount_tag=$(get_workspace_config "mount_tag")
+    mount_options=$(get_mount_options)
+    
+    if [[ -n "$vm_mount_point" && -n "$mount_tag" ]]; then
+        cat > "$vm_dir/setup-workspace.sh" << EOF
+#!/bin/bash
+# Workspace mounting script for AI Trading Station development VM
+
+set -euo pipefail
+
+info() {
+    echo -e "\\033[0;32m[INFO]\\033[0m \$*"
+}
+
+warn() {
+    echo -e "\\033[1;33m[WARN]\\033[0m \$*"
+}
+
+error() {
+    echo -e "\\033[0;31m[ERROR]\\033[0m \$*" >&2
+}
+
+# Workspace configuration
+VM_MOUNT_POINT="$vm_mount_point"
+MOUNT_TAG="$mount_tag"
+MOUNT_OPTIONS="$mount_options"
+
+setup_workspace_mounting() {
+    info "Setting up AI Trading Station workspace mounting..."
+    
+    # Create mount point directory
+    if [[ ! -d "\$VM_MOUNT_POINT" ]]; then
+        info "Creating mount point directory: \$VM_MOUNT_POINT"
+        sudo mkdir -p "\$VM_MOUNT_POINT"
+    fi
+    
+    # Install 9p filesystem support
+    info "Installing 9p filesystem support..."
+    sudo apt update
+    sudo apt install -y 9mount
+    
+    # Add to fstab for automatic mounting
+    local fstab_entry="\$MOUNT_TAG \$VM_MOUNT_POINT 9p \$MOUNT_OPTIONS 0 0"
+    
+    if ! grep -q "\$MOUNT_TAG" /etc/fstab; then
+        info "Adding workspace mount to /etc/fstab"
+        echo "\$fstab_entry" | sudo tee -a /etc/fstab
+    else
+        info "Workspace mount already configured in /etc/fstab"
+    fi
+    
+    # Mount the workspace
+    info "Mounting workspace..."
+    if mount | grep -q "\$VM_MOUNT_POINT"; then
+        info "Workspace already mounted"
+    else
+        sudo mount "\$VM_MOUNT_POINT" || {
+            warn "Failed to mount workspace. This may be expected if VM is not running with filesystem sharing."
+            warn "To mount manually when needed: sudo mount \$VM_MOUNT_POINT"
+        }
+    fi
+    
+    # Set proper ownership
+    if [[ -d "\$VM_MOUNT_POINT" ]]; then
+        info "Setting workspace ownership to developer user"
+        sudo chown -R developer:developer "\$VM_MOUNT_POINT" 2>/dev/null || true
+    fi
+    
+    info "✓ Workspace mounting setup completed"
+    info "Host project workspace will be available at: \$VM_MOUNT_POINT"
+}
+
+# Check if running inside VM
+if [[ -f "/proc/version" ]] && grep -q "Ubuntu" /proc/version; then
+    setup_workspace_mounting
+else
+    error "This script should be run inside the development VM"
+    exit 1
+fi
+EOF
+        
+        chmod +x "$vm_dir/setup-workspace.sh"
+        info "✓ Workspace mounting script created: setup-workspace.sh"
+    fi
+    
     info "✓ Setup scripts created in $vm_dir"
 }
 
@@ -415,10 +562,13 @@ Next Steps:
 3. Setup development environment inside VM:
    ./setup-copilot.sh
 
-4. Access VM via VNC if needed:
+4. Setup workspace mounting inside VM:
+   ./setup-workspace.sh
+
+5. Access VM via VNC if needed:
    vncviewer localhost:5901
 
-5. Switch modes using vm-dev-environment:
+6. Switch modes using vm-dev-environment:
    ./scripts/vm-dev-environment start    # Development mode
    ./scripts/vm-dev-environment production  # Production mode
 
@@ -428,10 +578,16 @@ The VM is configured with:
 - SSH enabled on port 22
 - VNC enabled on port 5901
 - Ready for GitHub Copilot integration
+- Workspace sharing configured (if host path exists)
 
 Production Performance:
 - VM can be completely disabled for zero-overhead production
 - scripts/onload-trading still delivers 4.37μs latency when needed
+
+Workspace Access:
+- Host project at: $(get_workspace_config "host_path" || echo "/home/youssefbahloul/ai-trading-station")  
+- VM mount point: $(get_workspace_config "vm_mount_point" || echo "/workspace/ai-trading-station")
+- Complete project workspace available for development
 
 EOF
 }

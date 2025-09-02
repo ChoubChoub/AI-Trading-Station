@@ -145,12 +145,14 @@ vncviewer localhost:5901
 # Setup GitHub Copilot and development tools
 ./setup-copilot.sh
 
+# Setup workspace mounting (mounts host project)
+./setup-workspace.sh
+
 # Authenticate with GitHub
 gh auth login
 
-# Clone repository for development
-git clone https://github.com/ChoubChoub/AI-Trading-Station
-cd AI-Trading-Station
+# Access the complete project workspace (already mounted from host)
+cd /workspace/ai-trading-station
 
 # Start VS Code with Copilot
 code .
@@ -448,18 +450,22 @@ sudo ./scripts/vm-dev-environment setup
 # Inside the VM, install VS Code and Copilot
 ./setup-copilot.sh
 
+# Setup workspace mounting to access complete project
+./setup-workspace.sh
+
 # Authenticate with GitHub
 gh auth login
 
-# Launch VS Code with Copilot
+# Launch VS Code with Copilot on the mounted workspace
+cd /workspace/ai-trading-station
 code .
 ```
 
 ### Using Copilot for Trading Optimizations
 
 ```bash
-# Open AI Trading Station project
-cd ~/ai-trading-station
+# Open AI Trading Station project (mounted from host)
+cd /workspace/ai-trading-station
 code .
 
 # Copilot can help with:
