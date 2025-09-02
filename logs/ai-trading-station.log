@@ -1,0 +1,29 @@
+AI Trading Station - High-Performance System Controller
+
+USAGE:
+    ./ai-trading-station.sh [COMMAND] [OPTIONS]
+
+COMMANDS:
+    start       Initialize and start the trading system
+    stop        Stop the trading system and restore defaults
+    status      Show current system status
+    test        Run performance validation tests
+    monitor     Start performance monitoring
+    validate    Validate current performance metrics
+
+OPTIONS:
+    --cores=X,Y     Specify trading cores (default: 2,3)
+    --interface=X   Network interface (default: eth0)
+    --help         Show this help message
+
+EXAMPLES:
+    ./ai-trading-station.sh start                    # Start with default configuration
+    ./ai-trading-station.sh start --cores=4,5        # Start with cores 4,5 for trading
+    ./ai-trading-station.sh test                     # Run performance validation
+    ./ai-trading-station.sh status                   # Show system status
+
+TARGET PERFORMANCE:
+    Mean Latency: 4.37μs
+    P95 Latency:  4.53μs  
+    P99 Latency:  4.89μs
+
