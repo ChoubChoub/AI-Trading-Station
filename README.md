@@ -155,6 +155,7 @@ These modules provide the foundation, but **`scripts/onload-trading`** delivers 
 ### Key Features
 - **Zero Production Impact**: Complete VM isolation with verified clean states
 - **GitHub Copilot Integration**: AI-powered development in Ubuntu 22.04 VM
+- **Complete Workspace Access**: Host project mounted at `/workspace/ai-trading-station/`
 - **Automated Mode Switching**: One-command transition between development/production
 - **Performance Preservation**: Full OnLoad capability (4.37μs) maintained
 
@@ -180,6 +181,10 @@ sudo ./scripts/vm-dev-environment setup
 ./scripts/vm-dev-environment start    # Start development mode
 ./scripts/vm-dev-environment stop     # Stop development mode
 
+# Inside VM setup (after connecting)
+./setup-copilot.sh                   # Install VS Code & GitHub Copilot
+./setup-workspace.sh                 # Mount complete project workspace
+
 # Mode switching
 ./scripts/production-mode-switch development  # Enable development
 ./scripts/production-mode-switch production   # Enable production (zero overhead)
@@ -189,6 +194,12 @@ sudo ./scripts/vm-dev-environment setup
 ./ai-trading-station.sh vm-dev       # Quick development mode
 ./ai-trading-station.sh vm-prod      # Quick production mode
 ```
+
+### Workspace Access
+- **Host Project**: `/home/youssefbahloul/ai-trading-station/` (complete workspace)
+- **VM Mount Point**: `/workspace/ai-trading-station/` (inside development VM)
+- **Access Method**: Automatic filesystem sharing via virtio-9p
+- **Content**: ALL project files and subdirectories available for development
 
 ### Documentation
 - **[Complete VM Setup Guide](docs/vm-development-guide.md)**: Comprehensive setup and usage documentation
