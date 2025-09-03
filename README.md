@@ -59,18 +59,45 @@ acknowledgment
 | **Cooling**   | Arctic Liquid Freezer III 360 AIO  | CPU cooling with 3×120mm Arctic P12 Pro fans             | Maintains <80°C CPU temps under sustained load      |
 | **Router**    | Ubiquiti Cloud Gateway Fiber       | Enterprise-grade routing                                 | Low-jitter WAN connectivity                         |
 
-### Operating System and Low Level Optimization
-**Operating System**: Ubuntu Server 24.04.3 LTS with Minimal GUI Setup for Low-Latency Systems.
-**GUI Setup**: Provide just enough desktop functionality for monitoring, management, or launching trading applications, while minimizing background activity and resource usage.
+### Operating System and Low-Latency Optimization
+
+**Operating System**: Ubuntu Server 24.04.3 LTS with Minimal GUI Setup for Low-Latency, providing just enough desktop functionality for monitoring, management, or launching trading applications, while minimizing background activity and resource usage.
 - **Display Manager:** [LightDM](https://github.com/canonical/lightdm) is used as the lightweight login/session manager, providing fast startup and minimal overhead.
 - **X Server:** [Xorg](https://www.x.org/wiki/) is selected for its compatibility and configurability with most graphical environments and remote tools.
 - **Desktop Environment:** [XFCE](https://www.xfce.org/) is chosen for its lightweight footprint and efficient resource usage, running only the essential panel, window manager, and desktop components.
 - **Minimal Overhead:** Only the necessary GUI components are installed and running, reducing CPU usage and background “noise” on the system.
 - **Fast Startup:** LightDM and XFCE are optimized for quick login and minimal graphical bloat.
 - **Configuration Flexibility:** XFCE allows for easy customization, and components like compositing, notifications, and desktop effects can be disabled for additional performance gains.
-- **Low Jitter:** The minimal GUI setup is intentionally kept separate from performance-critical CPU cores via CPU affinity and process isolation.
 
+**Low Latency Optimizations**: 
+- **Process Isolation:** All GUI processes (LightDM, Xorg, XFCE components) are pinned to specific CPU cores (e.g., 0 and 1) using CPU affinity directive in `/etc/systemd/system.conf`. This guarantees that routine OS services, desktop environments, daemons, and background processes do not run on isolated (trading) cores.
 
+## IRQ Affinity Isolation
+
+**IRQ affinity isolation** is a foundational part of the ultra-low latency trinity stack. It ensures that network interrupts are strictly confined to dedicated housekeeping CPU cores (0 and 1), preventing unpredictable latency spikes on trading-critical cores.
+
+**Key Features:**
+- **Automatic NIC Detection:**  
+  The `configure-nic-irq-affinity.sh` script auto-detects the system’s primary network interface card (NIC) by parsing the default routing table, ensuring all relevant network paths are covered.
+- **Comprehensive IRQ Mapping:**  
+  All IRQs associated with the detected NIC are discovered and logged. These are then distributed in a round-robin fashion between CPU cores 0 and 1.
+- **CPU Affinity Enforcement:**  
+  The script applies affinity masks so that only cores 0 and 1 can process NIC interrupts, fully isolating the trading application’s CPU cores (2, 3, …) from network-layer interruptions.
+- **Systemd Integration (Auto-Start at Boot):**  
+  The script is managed by a dedicated systemd service unit. It runs automatically at system boot, after all network interfaces are loaded, ensuring reliable and repeatable IRQ configuration on every restart.
+- **Production Safety:**  
+  Built-in checks guarantee target cores are online and available before any affinity changes are applied, minimizing operational risk.
+- **Audit Logging:**  
+  Every configuration change is logged to `/var/log/nic-irq-affinity.log` for transparency and troubleshooting.
+
+**Result:**  
+All network interrupt traffic is “quarantined” to non-trading CPUs, eliminating cross-core IRQ noise. This provides the trading engine with a deterministic, interference-free processing environment—crucial for sub-microsecond execution and consistent ultra-low latency performance.
+
+---
+
+**See also:**  
+- [CPU Affinity Isolation](#cpu-affinity-isolation) for how OS and userland processes are similarly confined to non-trading cores.
+- [OnLoad Trading Optimization](#onload-trading-optimization) for kernel bypass and trading workload isolation.
 
 
 ### Process Isolation
