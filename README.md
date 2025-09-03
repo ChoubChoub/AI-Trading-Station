@@ -59,10 +59,62 @@ acknowledgment
 | **Cooling**   | Arctic Liquid Freezer III 360 AIO  | CPU cooling with 3×120mm Arctic P12 Pro fans             | Maintains <80°C CPU temps under sustained load      |
 | **Router**    | Ubiquiti Cloud Gateway Fiber       | Enterprise-grade routing                                 | Low-jitter WAN connectivity                         |
 
+### Operating System and Low Level Optimization
 
+**Operating System**: Ubuntu Server 24.04.3 LTS with Minimal GUI Setup for Low-Latency Systems.
 
+## Minimal GUI Setup for Low-Latency Systems
 
+This system is configured with a **minimal graphical user interface (GUI)** to provide just enough desktop functionality for monitoring, management, or launching trading applications, while minimizing background activity and resource usage.
 
+### Key Components
+
+- **Display Manager:**  
+  [LightDM](https://github.com/canonical/lightdm) is used as the lightweight login/session manager, providing fast startup and minimal overhead.
+- **X Server:**  
+  [Xorg](https://www.x.org/wiki/) is selected for its compatibility and configurability with most graphical environments and remote tools.
+- **Desktop Environment:**  
+  [XFCE](https://www.xfce.org/) is chosen for its lightweight footprint and efficient resource usage, running only the essential panel, window manager, and desktop components.
+
+### Rationale
+
+- **Minimal Overhead:**  
+  Only the necessary GUI components are installed and running, reducing CPU usage and background “noise” on the system.
+- **Fast Startup:**  
+  LightDM and XFCE are optimized for quick login and minimal graphical bloat.
+- **Configuration Flexibility:**  
+  XFCE allows for easy customization, and components like compositing, notifications, and desktop effects can be disabled for additional performance gains.
+- **Low Jitter:**  
+  The minimal GUI setup is intentionally kept separate from performance-critical CPU cores via CPU affinity and process isolation.
+
+### Typical Installed Packages
+
+- `lightdm`
+- `xorg`
+- `xfce4`
+- `xfce4-panel`
+- `xfwm4`
+- `xfdesktop`
+- (Optional) `xfce4-terminal`, `thunar` (file manager)
+
+### Additional Recommendations
+
+- **Disable Unused Services:**  
+  Avoid starting unnecessary background daemons, applets, or notifications.
+- **Compositor:**  
+  XFCE compositing can be disabled for lower latency via `Settings > Window Manager Tweaks > Compositor`.
+- **Autostart:**  
+  Limit autostarted programs in XFCE to essentials only.
+- **Session Management:**  
+  Avoid session restoration of non-essential applications.
+
+### Process Isolation
+
+All GUI processes (LightDM, Xorg, XFCE components) are pinned to specific CPU cores (e.g., 0 and 1) using CPU affinity, as detailed in the CPU Affinity Isolation section above. This ensures no GUI activity can interfere with isolated trading or real-time workloads.
+
+---
+
+**This setup provides a stable, responsive, and low-overhead desktop environment that supports monitoring and management without compromising system determinism or low-latency performance.**
 
 Monitoring Core Isolation, IRQ Affinity, and Hardware Health
 
