@@ -60,15 +60,8 @@ acknowledgment
 | **Router**    | Ubiquiti Cloud Gateway Fiber       | Enterprise-grade routing                                 | Low-jitter WAN connectivity                         |
 
 ### Operating System and Low Level Optimization
-
 **Operating System**: Ubuntu Server 24.04.3 LTS with Minimal GUI Setup for Low-Latency Systems.
-
-## Minimal GUI Setup for Low-Latency Systems
-
-This system is configured with a **minimal graphical user interface (GUI)** to provide just enough desktop functionality for monitoring, management, or launching trading applications, while minimizing background activity and resource usage.
-
-### Key Components
-
+**GUI Setup**: Provide just enough desktop functionality for monitoring, management, or launching trading applications, while minimizing background activity and resource usage.
 - **Display Manager:**  
   [LightDM](https://github.com/canonical/lightdm) is used as the lightweight login/session manager, providing fast startup and minimal overhead.
 - **X Server:**  
