@@ -44,9 +44,24 @@ acknowledgment
    - TournamentResultEvent : Contains final capital allocation decisions
 
 ## Hardware Architecture and Configuration
+### Hardware Specification
 
-Hardware Specification
+| **Component** | **Specification**                  | **Configuration Details**                                | **Rationale**                                      |
+|---------------|------------------------------------|----------------------------------------------------------|----------------------------------------------------|
+| **CPU**       | Intel Ultra 9 285K                 | 8 P-cores @ 5.7GHz, E-cores disabled in BIOS             | Deterministic latency, eliminates scheduling jitter |
+| **GPUs**      | 2 × RTX 6000 Pro Max-Q             | 96GB GDDR7 each, 300W power draw per unit                | Combined 192GB VRAM enables 30-70B parameter models |
+| **RAM**       | 160GB DDR5-6000 CL30               | 2×48GB + 2×32GB Corsair Vengeance sticks                 | Matches GPU VRAM capacity for efficient data preprocessing |
+| **Motherboard**| ASUS ROG Maximus Extreme Z890     | 2×PCIe 4.0 x16, 4×DIMM DDR5 slots                        | Supports dual GPU and full RAM configuration        |
+| **NIC**       | Solarflare XS522 10GbE             | OpenOnload kernel bypass capability                      | Sub-10μs network latency with user-space TCP/UDP    |
+| **Storage**   | Primary: 4TB Samsung 990 Pro NVMe | 7,350MB/s sequential read/write                          | Real-time data processing and model checkpoints     |
+|               | Archive: 8TB Seagate HDD          | 5,400 RPM for cold storage                               | Historical data and backup storage                  |
+| **PSU**       | Corsair HX1200i 80+ Platinum       | 1,200W capacity with 300W headroom                       | Handles dual 300W GPUs plus CPU and peripherals     |
+| **Cooling**   | Arctic Liquid Freezer III 360 AIO  | CPU cooling with 3×120mm Arctic P12 Pro fans             | Maintains <80°C CPU temps under sustained load      |
+| **Case Fans** | 10×120/140mm Lian Li Uni Fan TL    | Optimized airflow for dual GPU heat dissipation          |                                                    |
+| **Case**      | Lian Li O11 Dynamic Evo RGB        | Custom ventilation modifications                         | Supports sustained 600W GPU thermal load            |
+| **Router**    | Ubiquiti Cloud Gateway Fiber       | Enterprise-grade routing                                 | Low-jitter WAN connectivity                         |
 
+This table provides a clear and concise overview of the hardware components and their specifications, along with the rationale for each choice. Feel free to adjust any details to better fit your project's specific requirements.
 
 **World-class sub-5μs trading latency through innovative OnLoad kernel bypass technology**
 
