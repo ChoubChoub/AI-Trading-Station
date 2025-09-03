@@ -1,15 +1,52 @@
 # AI Trading Station
 
-Overview
-
+## Overview
 This project is a cost-efficient, medium-frequency algorithmic trading platform designed to execute strategies on 1-minute to 1-hour timeframes using tick-level market data. It employs a hybrid competitive-collaborative multi-agent architecture for intelligent decision-making, executing orders in ≤ 50ms. The platform leverages dual RTX 6000 Pro configurations to combine institutional-grade intelligence with retail-level costs.
 
-Key Features
-Tick-Level Data Utilization: Employs tick-level data to implement strategies that operate on 1-minute to 1-hour frequencies, ensuring precise and timely decision-making.
-Hybrid Architecture: Implements a competitive-collaborative framework that delivers 85-90% of the benefits of a pure competitive framework with reduced operational risk.
-AI-Driven Intelligence: Focuses on competitive performance through advanced AI rather than pure speed.
-High VRAM Capacity: Utilizes 192GB total VRAM (2× RTX 6000 Pro with 96GB each) for strategic model selection and phased competitive implementation.
-Evidence-Based Innovation: Ensures sustainable trading performance through an evidence-based approach rather than relying solely on architectural sophistication.
+## Key Features
+- **Tick-Level Data Utilization**: Employs tick-level data to implement strategies that operate on 1-minute to 1-hour frequencies, ensuring precise and timely decision-making.
+- **Hybrid Architecture**: Implements a competitive-collaborative framework that delivers 85-90% of the benefits of a pure competitive framework with reduced operational risk.
+- **AI-Driven Intelligence**: Focuses on competitive performance through advanced AI rather than pure speed.
+- **High VRAM Capacity**: Utilizes 192GB total VRAM (2× RTX 6000 Pro with 96GB each) for strategic model selection and phased competitive implementation.
+- **Evidence-Based Innovation**: Ensures sustainable trading performance through an evidence-based approach rather than relying solely on architectural sophistication.
+
+## Multi-Agent System Architecture
+### Strategic Philosophy
+Recent research highlights that hybrid competitive-collaborative multi-agent trading systems achieve an optimal balance between innovation and operational stability. Our platform implements a phased competitive framework where specialized agents compete in weekly tournaments with a limited allocation impact of 10%. These agents undergo adversarial validation and receive capital allocations based on their performance. This approach fosters continuous innovation pressure while ensuring portfolio-level coordination and operational stability. The allocation ratio may increase in later stages, contingent upon maintaining operational stability.
+
+### Competitive Framework Implementation
+- **Foundation with Limited Competition**: Weekly tournament with 4 strategy agents.
+- **Competitive allocation**: Limited to 10% of total capital.
+- **Tournament Mechanics**:
+  - Each agent generates predictions for next trading session.
+  - Challenge Generator identifies weaknesses in each strategy's reasoning.
+  - Agents must defend their positions against challenges.
+  - Performance scoring with challenge resilience.
+  - Capital allocation based on tournament results (capped at 10% initially)
+- **Initial Capital Allocation Rules**:
+   - Base allocation (90%) proportional to recent risk-adjusted performance (70% weight).
+   - Competitive allocation (10% max) based on tournament results.
+   - Innovation bonus for novel approaches showing promise (within competitive allocation).
+   - Diversity adjustment to prevent strategy homogeneity (within competitive allocation).
+
+### Agent Communication Architecture
+- **Primary Bus**: Redis Streams with UNIX domain sockets for <2μs inter-agent latency
+- **Event Types**: MarketEvent, SignalEvent, RiskAlert, OrderEvent, FillEvent, ChallengeEvent,
+DefenseEvent, TournamentResultEvent
+- **Message Format**: JSON with timestamp, agent_id, confidence_score, competitive_score, and
+payload
+- **Consumer Groups**: Each agent subscribes to relevant streams with automatic
+acknowledgment
+- **Persistence**: All events written to QuestDB with SHA-256 hash chain for audit trail
+- **Competition-Specific Enhancements**:
+   - ChallengeEvent: Contains adversarial questions targeting strategy weaknesses.
+   - DefenseEvent : Contains strategy agent's counter-arguments.
+   - TournamentResultEvent : Contains final capital allocation decisions
+
+## Hardware Architecture and Configuration
+
+Hardware Specification
+
 
 **World-class sub-5μs trading latency through innovative OnLoad kernel bypass technology**
 
