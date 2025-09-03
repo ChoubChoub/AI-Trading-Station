@@ -61,7 +61,8 @@ acknowledgment
 
 ### Operating System and Low-Latency Optimization
 
-**Operating System**: Ubuntu Server 24.04.3 LTS with Minimal GUI Setup for Low-Latency, providing just enough desktop functionality for monitoring, management, or launching trading applications, while minimizing background activity and resource usage.
+**Operating System**: 
+- Ubuntu Server 24.04.3 LTS with Minimal GUI Setup for Low-Latency, providing just enough desktop functionality for monitoring, management, or launching trading applications, while minimizing background activity and resource usage.
 - **Display Manager:** [LightDM](https://github.com/canonical/lightdm) is used as the lightweight login/session manager, providing fast startup and minimal overhead.
 - **X Server:** [Xorg](https://www.x.org/wiki/) is selected for its compatibility and configurability with most graphical environments and remote tools.
 - **Desktop Environment:** [XFCE](https://www.xfce.org/) is chosen for its lightweight footprint and efficient resource usage, running only the essential panel, window manager, and desktop components.
