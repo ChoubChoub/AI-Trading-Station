@@ -70,42 +70,18 @@ acknowledgment
 - **Configuration Flexibility:** XFCE allows for easy customization, and components like compositing, notifications, and desktop effects can be disabled for additional performance gains.
 
 **Low Latency Optimizations**: 
-- **IRQ affinity isolation:** Ensures that network interrupts are strictly confined to dedicated housekeeping CPU cores (0 and 1), preventing unpredictable latency spikes on trading-critical cores.
+- **IRQ Affinity Isolation:** Ensures that network interrupts are strictly confined to dedicated housekeeping CPU cores (0 and 1), preventing unpredictable latency spikes on trading-critical cores.
+  - **Automatic NIC Detection:** The `configure-nic-irq-affinity.sh` script auto-detects the system’s primary network interface card (NIC) by parsing the default routing table, ensuring all relevant network paths are covered.
+  - **Comprehensive IRQ Mapping:** All IRQs associated with the detected NIC are discovered and logged. These are then distributed in a round-robin fashion between CPU cores 0 and 1.
+  - **CPU Affinity Enforcement:** The script applies affinity masks so that only cores 0 and 1 can process NIC interrupts, fully isolating the trading application’s CPU cores (2, 3, …) from network-layer interruptions.
+  - **Systemd Integration (Auto-Start at Boot):** The script is managed by a dedicated systemd service unit. It runs automatically at system boot, after all network interfaces are loaded, ensuring reliable and repeatable IRQ configuration on every restart.
+  - **Production Safety:** Built-in checks guarantee target cores are online and available before any affinity changes are applied, minimizing operational risk.
+  - **Audit Logging:** Every configuration change is logged to `/var/log/nic-irq-affinity.log` for transparency and troubleshooting.
 
 - **Process Isolation:** All GUI processes (LightDM, Xorg, XFCE components) are pinned to specific CPU cores (e.g., 0 and 1) using CPU affinity directive in `/etc/systemd/system.conf`. This guarantees that routine OS services, desktop environments, daemons, and background processes do not run on isolated (trading) cores.
 
-## IRQ Affinity Isolation
-**Key Features:**
-- **Automatic NIC Detection:**  
-  The `configure-nic-irq-affinity.sh` script auto-detects the system’s primary network interface card (NIC) by parsing the default routing table, ensuring all relevant network paths are covered.
-- **Comprehensive IRQ Mapping:**  
-  All IRQs associated with the detected NIC are discovered and logged. These are then distributed in a round-robin fashion between CPU cores 0 and 1.
-- **CPU Affinity Enforcement:**  
-  The script applies affinity masks so that only cores 0 and 1 can process NIC interrupts, fully isolating the trading application’s CPU cores (2, 3, …) from network-layer interruptions.
-- **Systemd Integration (Auto-Start at Boot):**  
-  The script is managed by a dedicated systemd service unit. It runs automatically at system boot, after all network interfaces are loaded, ensuring reliable and repeatable IRQ configuration on every restart.
-- **Production Safety:**  
-  Built-in checks guarantee target cores are online and available before any affinity changes are applied, minimizing operational risk.
-- **Audit Logging:**  
-  Every configuration change is logged to `/var/log/nic-irq-affinity.log` for transparency and troubleshooting.
 
 
-
-
-
-**Result:**  
-All network interrupt traffic is “quarantined” to non-trading CPUs, eliminating cross-core IRQ noise. This provides the trading engine with a deterministic, interference-free processing environment—crucial for sub-microsecond execution and consistent ultra-low latency performance.
-
----
-
-**See also:**  
-- [CPU Affinity Isolation](#cpu-affinity-isolation) for how OS and userland processes are similarly confined to non-trading cores.
-- [OnLoad Trading Optimization](#onload-trading-optimization) for kernel bypass and trading workload isolation.
-
-
-### Process Isolation
-
-All GUI processes (LightDM, Xorg, XFCE components) are pinned to specific CPU cores (e.g., 0 and 1) using CPU affinity, as detailed in the CPU Affinity Isolation section above. This ensures no GUI activity can interfere with isolated trading or real-time workloads.
 
 ---
 
