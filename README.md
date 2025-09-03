@@ -81,8 +81,16 @@ acknowledgment
 
 - **Process Isolation:** All GUI processes (LightDM, Xorg, XFCE components) are pinned to specific CPU cores (e.g., 0 and 1) using CPU affinity directive in `/etc/systemd/system.conf`. This guarantees that routine OS services, desktop environments, daemons, and background processes do not run on isolated (trading) cores.
 
-
-
+- **OnLoad Trading Wrapper:** Launches trading workloads with guaranteed CPU and network isolation for ultra-low latency execution.
+  - **Trading Core Pinning:** Binds trading applications to dedicated, isolated CPU cores (typically 2 and 3), ensuring no background or OS processes interfere with critical computation.
+  - **Safety Checks:** Before launch, the script verifies that the configured trading cores exist and are online, preventing misconfiguration or resource contention.
+  - **OnLoad Kernel Bypass:** Utilizes Solarflare OnLoad to bypass the Linux kernel network stack, enabling direct user-space networking for sub-microsecond packet processing and minimal jitter.
+  - **OnLoad Network Acceleration:** Automatically applies a suite of Solarflare OnLoad environment variables (e.g., `EF_POLL_USEC=0`, queue sizing, spin tuning) to maximize network throughput, minimize latency, and bypass the kernel network stack where possible.
+  - **Flexible Fallback Modes:** Supports automatic (`auto`, the default), onload-only, or strict operation if CPU pinning is unavailable, so trading processes always launch safely and optimally.  
+    - **Default Mode:** If CPU pinning is not possible, the script defaults to `auto` mode and will run the trading application with OnLoad but without CPU affinity pinning.
+  - **User Configurable:** Trading cores, fallback behavior, and debug output can all be set via environment variables, making adaptation to new deployments simple and robust.
+  - **How to Launch:** Run your trading application via:```bash scripts/onload-trading <your_trading_binary> [args...]```
+  - **Result:** Trading engines are launched in a deterministic, interference-free environment, achieving sub-microsecond network operations and consistently predictable performance thanks to full kernel bypass and CPU isolation.
 
 ---
 
