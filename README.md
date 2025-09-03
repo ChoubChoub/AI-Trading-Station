@@ -12,7 +12,7 @@ This project is a cost-efficient, medium-frequency algorithmic trading platform 
 
 ## Multi-Agent System Architecture
 ### Strategic Philosophy
-Recent research highlights that hybrid competitive-collaborative multi-agent trading systems achieve an optimal balance between innovation and operational stability. Our platform implements a phased competitive framework where specialized agents compete in weekly tournaments with a limited allocation impact of 10%. These agents undergo adversarial validation and receive capital allocations based on their performance. This approach fosters continuous innovation pressure while ensuring portfolio-level coordination and operational stability. The allocation ratio may increase in later stages, contingent upon maintaining operational stability.
+Recent studies show that hybrid systems combining competition and collaboration among trading agents can effectively balance innovation with operational stability. Our platform applies this principle through a phased competitive framework: specialized agents participate in weekly tournaments, where their trading impact is initially capped at 10% of total capital. Agents are tested through adversarial validation, and capital is allocated according to performance. This structure ensures constant competitive pressure to innovate while preserving overall portfolio stability and coordination. Over time, the allocation cap may be raised, provided operational robustness is maintained.
 
 ### Competitive Framework Implementation
 - **Foundation with Limited Competition**: Weekly tournament with 4 strategy agents.
@@ -49,7 +49,7 @@ acknowledgment
 | **Component** | **Specification**                  | **Configuration Details**                                | **Rationale**                                      |
 |---------------|------------------------------------|----------------------------------------------------------|----------------------------------------------------|
 | **CPU**       | Intel Ultra 9 285K                 | 8 P-cores @ 5.7GHz, E-cores disabled in BIOS             | Deterministic latency, eliminates scheduling jitter |
-| **GPUs**      | 2 × RTX 6000 Pro Max-Q             | 96GB GDDR7 each, 300W power draw per unit                | Combined 192GB VRAM enables 30-70B parameter models |
+| **GPU**      | 2 × RTX 6000 Pro Max-Q             | 96GB GDDR7 each, 300W power draw per unit                | Combined 192GB VRAM enables 30-70B parameter models |
 | **RAM**       | 160GB DDR5-6000 CL30               | 2×48GB + 2×32GB Corsair Vengeance sticks                 | Matches GPU VRAM capacity for efficient data preprocessing |
 | **Motherboard**| ASUS ROG Maximus Extreme Z890     | 2×PCIe 4.0 x16, 4×DIMM DDR5 slots                        | Supports dual GPU and full RAM configuration        |
 | **NIC**       | Solarflare X2522 10GbE             | OpenOnload kernel bypass capability                      | Sub-10μs network latency with user-space TCP/UDP    |
@@ -64,7 +64,34 @@ acknowledgment
 
 
 
+Monitoring Core Isolation, IRQ Affinity, and Hardware Health
 
+Ensuring the performance and reliability of a low-latency trading platform requires continuous monitoring of several critical system KPIs. This monitoring framework is designed to provide early detection of configuration drift, resource contention, or hardware anomalies that could jeopardize latency, determinism, or system stability.
+
+1. Core Isolation & IRQ Affinity Monitoring
+
+Objective: Guarantee that isolated CPU cores (e.g., cores 2 and 3) remain free from OS, user, and device interrupt noise, preserving them exclusively for latency-sensitive trading workloads.
+Key KPIs:
+CPU Utilization per Core: Cores assigned for trading should exhibit near 100% idle when the application is not running, and show no irq or softirq activity.
+IRQ Event Distribution: All network (NIC) and other relevant hardware interrupts must be pinned to non-isolated cores (e.g., cores 0 and 1). Regular checks of /proc/interrupts ensure that no IRQ events are handled by isolated cores.
+Process Affinity: Only essential kernel threads should appear on isolated cores outside trading application runtime.
+2. Hardware Health Monitoring
+
+Objective: Prevent performance degradation or hardware failure by tracking vital system temperatures and other health metrics.
+Key KPIs:
+CPU Temperature: Continuous polling of CPU thermal sensors to detect overheating.
+GPU Temperature (if applicable): Monitoring via vendor utilities (e.g., nvidia-smi for NVIDIA GPUs).
+Fan Speeds, Power Consumption: Optional, for early detection of cooling or power delivery issues.
+3. Implementation Considerations
+
+Automated Scripts: Deploy custom or open-source scripts to check isolation status, IRQ distribution, and sensor data, with results logged and/or visualized.
+Alerting: Integrate with monitoring platforms (e.g., Prometheus, Zabbix, Nagios) to trigger alerts if KPIs fall outside acceptable ranges (e.g., IRQs on isolated cores, excessive temperatures).
+Audit and Validation: Regularly validate that systemd services and boot-time configurations enforce the intended affinity and isolation settings after reboots or upgrades.
+4. Operational Benefits
+
+Reduced Latency and Jitter: By preventing interrupt and process pollution of trading cores, the system maintains deterministic performance.
+Proactive Issue Detection: Early warnings on hardware or configuration drift minimize downtime and performance incidents.
+Auditability: Persistent monitoring logs and reports provide compliance and troubleshooting evidence.
 
 **World-class sub-5μs trading latency through innovative OnLoad kernel bypass technology**
 
