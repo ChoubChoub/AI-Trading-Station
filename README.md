@@ -70,12 +70,11 @@ acknowledgment
 - **Configuration Flexibility:** XFCE allows for easy customization, and components like compositing, notifications, and desktop effects can be disabled for additional performance gains.
 
 **Low Latency Optimizations**: 
+- **IRQ affinity isolation:** Ensures that network interrupts are strictly confined to dedicated housekeeping CPU cores (0 and 1), preventing unpredictable latency spikes on trading-critical cores.
+
 - **Process Isolation:** All GUI processes (LightDM, Xorg, XFCE components) are pinned to specific CPU cores (e.g., 0 and 1) using CPU affinity directive in `/etc/systemd/system.conf`. This guarantees that routine OS services, desktop environments, daemons, and background processes do not run on isolated (trading) cores.
 
 ## IRQ Affinity Isolation
-
-**IRQ affinity isolation** is a foundational part of the ultra-low latency trinity stack. It ensures that network interrupts are strictly confined to dedicated housekeeping CPU cores (0 and 1), preventing unpredictable latency spikes on trading-critical cores.
-
 **Key Features:**
 - **Automatic NIC Detection:**  
   The `configure-nic-irq-affinity.sh` script auto-detects the system’s primary network interface card (NIC) by parsing the default routing table, ensuring all relevant network paths are covered.
@@ -89,6 +88,10 @@ acknowledgment
   Built-in checks guarantee target cores are online and available before any affinity changes are applied, minimizing operational risk.
 - **Audit Logging:**  
   Every configuration change is logged to `/var/log/nic-irq-affinity.log` for transparency and troubleshooting.
+
+
+
+
 
 **Result:**  
 All network interrupt traffic is “quarantined” to non-trading CPUs, eliminating cross-core IRQ noise. This provides the trading engine with a deterministic, interference-free processing environment—crucial for sub-microsecond execution and consistent ultra-low latency performance.
