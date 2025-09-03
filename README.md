@@ -62,44 +62,16 @@ acknowledgment
 ### Operating System and Low Level Optimization
 **Operating System**: Ubuntu Server 24.04.3 LTS with Minimal GUI Setup for Low-Latency Systems.
 **GUI Setup**: Provide just enough desktop functionality for monitoring, management, or launching trading applications, while minimizing background activity and resource usage.
-- **Display Manager:**  
-  [LightDM](https://github.com/canonical/lightdm) is used as the lightweight login/session manager, providing fast startup and minimal overhead.
-- **X Server:**  
-  [Xorg](https://www.x.org/wiki/) is selected for its compatibility and configurability with most graphical environments and remote tools.
-- **Desktop Environment:**  
-  [XFCE](https://www.xfce.org/) is chosen for its lightweight footprint and efficient resource usage, running only the essential panel, window manager, and desktop components.
+- **Display Manager:** [LightDM](https://github.com/canonical/lightdm) is used as the lightweight login/session manager, providing fast startup and minimal overhead.
+- **X Server:** [Xorg](https://www.x.org/wiki/) is selected for its compatibility and configurability with most graphical environments and remote tools.
+- **Desktop Environment:** [XFCE](https://www.xfce.org/) is chosen for its lightweight footprint and efficient resource usage, running only the essential panel, window manager, and desktop components.
+- **Minimal Overhead:** Only the necessary GUI components are installed and running, reducing CPU usage and background “noise” on the system.
+- **Fast Startup:** LightDM and XFCE are optimized for quick login and minimal graphical bloat.
+- **Configuration Flexibility:** XFCE allows for easy customization, and components like compositing, notifications, and desktop effects can be disabled for additional performance gains.
+- **Low Jitter:** The minimal GUI setup is intentionally kept separate from performance-critical CPU cores via CPU affinity and process isolation.
 
-### Rationale
 
-- **Minimal Overhead:**  
-  Only the necessary GUI components are installed and running, reducing CPU usage and background “noise” on the system.
-- **Fast Startup:**  
-  LightDM and XFCE are optimized for quick login and minimal graphical bloat.
-- **Configuration Flexibility:**  
-  XFCE allows for easy customization, and components like compositing, notifications, and desktop effects can be disabled for additional performance gains.
-- **Low Jitter:**  
-  The minimal GUI setup is intentionally kept separate from performance-critical CPU cores via CPU affinity and process isolation.
 
-### Typical Installed Packages
-
-- `lightdm`
-- `xorg`
-- `xfce4`
-- `xfce4-panel`
-- `xfwm4`
-- `xfdesktop`
-- (Optional) `xfce4-terminal`, `thunar` (file manager)
-
-### Additional Recommendations
-
-- **Disable Unused Services:**  
-  Avoid starting unnecessary background daemons, applets, or notifications.
-- **Compositor:**  
-  XFCE compositing can be disabled for lower latency via `Settings > Window Manager Tweaks > Compositor`.
-- **Autostart:**  
-  Limit autostarted programs in XFCE to essentials only.
-- **Session Management:**  
-  Avoid session restoration of non-essential applications.
 
 ### Process Isolation
 
