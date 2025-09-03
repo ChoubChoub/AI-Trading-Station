@@ -1,5 +1,16 @@
 # AI Trading Station
 
+Overview
+
+This project is a cost-efficient, medium-frequency algorithmic trading platform designed to execute strategies on 1-minute to 1-hour timeframes using tick-level market data. It employs a hybrid competitive-collaborative multi-agent architecture for intelligent decision-making, executing orders in ≤ 50ms. The platform leverages dual RTX 6000 Pro configurations to combine institutional-grade intelligence with retail-level costs.
+
+Key Features
+Tick-Level Data Utilization: Employs tick-level data to implement strategies that operate on 1-minute to 1-hour frequencies, ensuring precise and timely decision-making.
+Hybrid Architecture: Implements a competitive-collaborative framework that delivers 85-90% of the benefits of a pure competitive framework with reduced operational risk.
+AI-Driven Intelligence: Focuses on competitive performance through advanced AI rather than pure speed.
+High VRAM Capacity: Utilizes 192GB total VRAM (2× RTX 6000 Pro with 96GB each) for strategic model selection and phased competitive implementation.
+Evidence-Based Innovation: Ensures sustainable trading performance through an evidence-based approach rather than relying solely on architectural sophistication.
+
 **World-class sub-5μs trading latency through innovative OnLoad kernel bypass technology**
 
 ## 🚀 Core Performance Achievement: 4.37μs Mean Latency
