@@ -229,14 +229,14 @@ open_console() {
     info "Opening console for VM '$VM_NAME'..."
     info "Press Ctrl+Alt+G to release mouse, Ctrl+Alt+2 for QEMU monitor"
     
-    # Connect to VM console
-    qemu-system-x86_64 \
-        -display gtk \
-        -monitor stdio \
-        -chardev socket,id=monitor,host=localhost,port=4444,server=off 2>/dev/null || {
-        warn "GUI console not available, trying VNC..."
-        info "Connect with VNC client to localhost:5900"
-    }
+    # Connect to VM monitor (assumes monitor is on TCP port 4444)
+    if command -v telnet >/dev/null 2>&1; then
+        telnet localhost 4444
+    elif command -v nc >/dev/null 2>&1; then
+        nc localhost 4444
+    else
+        error "Neither 'telnet' nor 'nc' (netcat) is installed. Please install one to access the VM monitor."
+    fi
 }
 
 connect_ssh() {
