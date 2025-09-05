@@ -75,7 +75,7 @@ check_dependencies() {
     local required_packages=("qemu-kvm" "libvirt-daemon-system" "libvirt-clients" "bridge-utils" "virt-manager" "wget" "curl")
     
     for package in "${required_packages[@]}"; do
-        if ! command -v "$package" &> /dev/null && ! dpkg -l | grep -q "^ii  $package "; then
+        if ! dpkg -s "$package" &> /dev/null; then
             missing_packages+=("$package")
         fi
     done
