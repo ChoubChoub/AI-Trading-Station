@@ -133,3 +133,26 @@ Audit and Validation: Regularly validate that systemd services and boot-time con
 Reduced Latency and Jitter: By preventing interrupt and process pollution of trading cores, the system maintains deterministic performance.
 Proactive Issue Detection: Early warnings on hardware or configuration drift minimize downtime and performance incidents.
 Auditability: Persistent monitoring logs and reports provide compliance and troubleshooting evidence.
+
+## Transferring OnLoad Configuration from PROD to VM
+
+To safely copy your critical OnLoad configuration file from your production machine to your development VM, use the following SCP command. This ensures you can inspect the configuration before activating it on your VM.
+
+```bash
+scp -P 2222 /etc/onload.conf youssefbahloul@localhost:~/ai-trading-station/config/onload.conf.prod
+```
+
+**Notes:**
+- Replace `youssefbahloul` with your VM username if different.
+- This command assumes your VM is accessible via SSH on port 2222 (`ssh -p 2222 username@localhost`).
+- The config file will be placed in your project directory on the VM (`~/ai-trading-station/config/onload.conf.prod`).
+- After transfer, inspect the file to ensure correctness:
+  ```bash
+  cat ~/ai-trading-station/config/onload.conf.prod
+  ```
+- To activate the config on your VM, copy it to the system location:
+  ```bash
+  sudo cp ~/ai-trading-station/config/onload.conf.prod /etc/onload.conf
+  ```
+
+This procedure keeps your production environment safe and ensures your VM uses the correct OnLoad configuration for development and testing.
