@@ -105,16 +105,20 @@ class OptimizedMonitor:
     
     def _setup_logging(self):
         """Setup optimized logging"""
-        log_level = getattr(logging, self.config.get('log_level', 'INFO').upper())
-        logging.basicConfig(
-            level=log_level,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(self.config.get('log_file', '/tmp/trading_monitor.log')),
-                logging.StreamHandler(sys.stdout) if self.config.get('console_logging', False) else logging.NullHandler()
-            ]
-        )
+        # Setup logger first
         self.logger = logging.getLogger('TradingMonitor')
+        
+        # Only setup logging if not already configured
+        if not self.logger.handlers:
+            log_level = getattr(logging, self.config.get('log_level', 'INFO').upper())
+            logging.basicConfig(
+                level=log_level,
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                handlers=[
+                    logging.FileHandler(self.config.get('log_file', '/tmp/trading_monitor.log')),
+                    logging.StreamHandler(sys.stdout) if self.config.get('console_logging', False) else logging.NullHandler()
+                ]
+            )
     
     def _load_config(self) -> Dict[str, Any]:
         """Load monitoring configuration"""
@@ -290,7 +294,7 @@ class OptimizedMonitor:
                 open_files = 0
             
             try:
-                network_connections = len(trading_process.connections())
+                network_connections = len(trading_process.net_connections())
             except:
                 network_connections = 0
             
@@ -400,13 +404,16 @@ class OptimizedMonitor:
         self.running = True
         self.logger.info("Starting optimized trading system monitor")
         
-        # Set up signal handler
-        def signal_handler(signum, frame):
-            self.running = False
-            self.logger.info("Shutdown signal received")
-        
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+        # Only set up signal handler if we're in the main thread
+        import threading
+        if threading.current_thread() is threading.main_thread():
+            # Set up signal handler
+            def signal_handler(signum, frame):
+                self.running = False
+                self.logger.info("Shutdown signal received")
+            
+            signal.signal(signal.SIGINT, signal_handler)
+            signal.signal(signal.SIGTERM, signal_handler)
         
         try:
             while self.running:
