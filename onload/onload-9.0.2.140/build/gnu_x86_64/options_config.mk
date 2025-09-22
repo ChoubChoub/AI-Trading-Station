@@ -1,0 +1,10 @@
+
+
+NDEBUG := 1
+
+
+
+
+VPATH_ENABLED := 1
+
+

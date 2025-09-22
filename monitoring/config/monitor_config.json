@@ -1,0 +1,55 @@
+{
+  "cpu": {
+    "isolated_cores": [
+      2,
+      3
+    ],
+    "expected_governor": "performance",
+    "temp_threshold": 75,
+    "usage_threshold": 5
+  },
+  "network": {
+    "trading_interfaces": [
+      "enp130s0f0",
+      "enp130s0f1"
+    ],
+    "error_threshold": 0,
+    "drop_threshold": 0
+  },
+  "gpu": {
+    "temp_threshold": 80,
+    "util_threshold": 90
+  },
+  "processes": {
+    "trading": [
+      "trading_app",
+      "market_data",
+      "order_manager"
+    ]
+  },
+  "monitoring": {
+    "interval": 5,
+    "log_path": "/var/log/trading_monitor",
+    "enable_alerts": true,
+    "alert_email": "",
+    "prometheus_export": true,
+    "prometheus_port": 9100,
+    "log_level": "INFO",
+    "interval_seconds": 5
+  },
+  "system": {
+    "isolated_cpus": [
+      2,
+      3
+    ],
+    "network_interfaces": [
+      "enp130s0f0",
+      "enp130s0f1"
+    ]
+  },
+  "thresholds": {
+    "cpu_isolated_usage_percent": 5,
+    "network_drops_max": 0,
+    "latency_mean_microseconds": 10.0
+  }
+}

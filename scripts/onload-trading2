@@ -1,0 +1,115 @@
+#!/bin/bash
+# OnLoad Trading Application Wrapper - Enhanced for Onload 9.0.2.140
+# Version: 2.3 - Prevent EF_* variables leaking to subprocesses
+
+# Configuration
+TRADING_CORES="${ONLOAD_TRADING_CORES:-2,3}"
+FALLBACK_MODE="${ONLOAD_FALLBACK:-auto}"
+DEBUG_MODE="${ONLOAD_DEBUG:-0}"
+
+check_onload_version() {
+    if ! command -v onload >/dev/null 2>&1; then
+        echo "❌ Onload not found in PATH" >&2
+        return 1
+    fi
+    local version=$(onload --version 2>&1 | grep -oP 'Onload \K[0-9.]+' | head -1)
+    if [[ "$DEBUG_MODE" == "1" ]]; then
+        echo "🔍 Detected Onload version: $version"
+    fi
+    if [[ ! "$version" =~ ^9\. ]]; then
+        echo "⚠️  Warning: Onload version $version may have compatibility issues" >&2
+    fi
+    return 0
+}
+
+check_cpu_safety() {
+    local cores="$1"
+    for core in $(echo "$cores" | tr ',' ' '); do
+        if [[ ! -d "/sys/devices/system/cpu/cpu$core" ]]; then
+            echo "⚠️  Core $core does not exist" >&2
+            return 1
+        fi
+        if [[ -f "/sys/devices/system/cpu/cpu$core/online" ]]; then
+            if [[ "$(cat /sys/devices/system/cpu/cpu$core/online 2>/dev/null)" != "1" ]]; then
+                echo "⚠️  Core $core is offline" >&2
+                return 1
+            fi
+        fi
+    done
+    return 0
+}
+
+setup_onload_preload() {
+    if [[ -f /lib/x86_64-linux-gnu/libonload.so ]]; then
+        echo "/lib/x86_64-linux-gnu/libonload.so"
+    elif [[ -f /usr/lib/x86_64-linux-gnu/libonload.so ]]; then
+        echo "/usr/lib/x86_64-linux-gnu/libonload.so"
+    elif [[ -f /usr/lib/libonload.so ]]; then
+        echo "/usr/lib/libonload.so"
+    fi
+}
+
+# Compose Onload env only for the target command
+build_env() {
+    echo -n "EF_POLL_USEC=0 "
+    echo -n "EF_INT_DRIVEN=0 "
+    echo -n "EF_SPIN_USEC=1000000 "
+    echo -n "EF_CLUSTER_CORE_AFFINITY=$TRADING_CORES "
+    echo -n "EF_RXQ_SIZE=2048 "
+    echo -n "EF_TXQ_SIZE=1024 "
+    echo -n "EF_TCP_RECV_NONBLOCK=1 "
+    echo -n "EF_TCP_SEND_NONBLOCK=1 "
+    echo -n "EF_RX_MERGE=1 "
+    echo -n "EF_TX_PUSH=1 "
+    echo -n "EF_TCP_TMT_MODE=1 "
+    echo -n "EF_CTPIO_MODE=sf-np "
+    echo -n "EF_TCP_SYN_OPTS=3 "
+    echo -n "EF_TCP_RCVLOWAT=1 "
+    echo -n "EF_PREFAULT_PACKETS=1 "
+    echo -n "EF_EVENT_TIMER_QUANTUM=1 "
+    # Library path if needed
+    if [[ -f /lib/x86_64-linux-gnu/libcitransport0.so ]]; then
+        echo -n "LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:\$LD_LIBRARY_PATH "
+    elif [[ -f /usr/lib/libcitransport0.so ]]; then
+        echo -n "LD_LIBRARY_PATH=/usr/lib:\$LD_LIBRARY_PATH "
+    fi
+    # LD_PRELOAD
+    local preload
+    preload=$(setup_onload_preload)
+    if [[ -n "$preload" ]]; then
+        echo -n "LD_PRELOAD=$preload\$LD_PRELOAD "
+    fi
+}
+
+echo "🚀 OnLoad Trading Wrapper v2.3 - ChoubChoub AI Trading Station"
+echo "Date: $(date -u)"
+echo "Target cores: $TRADING_CORES"
+
+if ! check_onload_version; then
+    echo "❌ Onload not properly installed. Aborting." >&2
+    exit 1
+fi
+
+if check_cpu_safety "$TRADING_CORES"; then
+    if [[ "$DEBUG_MODE" == "1" ]]; then
+        echo "✅ CPU safety check passed"
+        echo "🔧 Launching with CPU pinning: taskset -c $TRADING_CORES onload $@"
+    fi
+    # Only set env for the target process
+    eval $(build_env) exec taskset -c "$TRADING_CORES" onload "$@"
+else
+    case "$FALLBACK_MODE" in
+        "strict")
+            echo "❌ CPU pinning failed in strict mode. Aborting." >&2
+            exit 1
+            ;;
+        "onload-only")
+            echo "⚠️  Falling back to OnLoad-only (no process pinning)" >&2
+            eval $(build_env) exec onload "$@"
+            ;;
+        "auto"|*)
+            echo "⚠️  CPU pinning unavailable, running without pinning" >&2
+            eval $(build_env) exec onload "$@"
+            ;;
+    esac
+fi

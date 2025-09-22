@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""
+AI Trading Station - COMPLETE Dashboard with ALL Features
+Optimized for 4.5μs latency WITH full system monitoring
+"""
+
+import curses
+import time
+import threading
+from datetime import datetime
+from monitor_trading_system_optimized import TradingSystemMonitor
+
+class TradingDashboard:
+    def __init__(self, stdscr):
+        self.stdscr = stdscr
+        self.monitor = TradingSystemMonitor()
+        self.running = True
+        self.update_count = 0
+        self.last_update = None
+        
+        # Setup colors
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)   # Green - OK
+        curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)     # Red - Error
+        curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK)  # Yellow - Warning
+        curses.init_pair(4, curses.COLOR_CYAN, curses.COLOR_BLACK)    # Cyan - Header
+        curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_BLACK)   # White - Normal
+        
+        curses.curs_set(0)
+        stdscr.nodelay(1)
+        stdscr.timeout(100)
+    
+    def update_metrics_worker(self):
+        """Background worker for metrics updates"""
+        while self.running:
+            try:
+                self.monitor.collect_all_metrics()
+                self.update_count += 1
+                self.last_update = datetime.now()
+                # Update every 10 seconds (latency test takes ~5s)
+                time.sleep(10)
+            except Exception as e:
+                time.sleep(10)
+    
+    def draw_header(self):
+        """Draw dashboard header"""
+        try:
+            max_y, max_x = self.stdscr.getmaxyx()
+            self.stdscr.attron(curses.color_pair(4) | curses.A_BOLD)
+            header = "🚀 AI TRADING STATION - COMPLETE MONITOR"
+            self.stdscr.addstr(0, 0, "="*min(80, max_x-1))
+            self.stdscr.addstr(1, (min(80, max_x)-len(header))//2, header[:max_x-1])
+            self.stdscr.addstr(2, 0, "="*min(80, max_x-1))
+            self.stdscr.attroff(curses.color_pair(4) | curses.A_BOLD)
+        except:
+            pass
+    
+    def draw_latency(self, row):
+        """Draw latency metrics - THE MOST IMPORTANT"""
+        try:
+            self.stdscr.addstr(row, 0, f"📊 TRADING LATENCY (Persistent Connection) [Update #{self.update_count}]:", curses.A_BOLD)
+            
+            metrics = self.monitor.metrics
+            if metrics.get('latency'):
+                lat = metrics['latency']
+                # Color based on performance
+                if lat['mean'] < 5:
+                    color = 1  # Green - excellent
+                elif lat['mean'] < 10:
+                    color = 3  # Yellow - good
+                else:
+                    color = 2  # Red - needs attention
+                
+                # Display all metrics
+                self.stdscr.attron(curses.color_pair(color))
+                self.stdscr.addstr(row+1, 2, f"Mean: {lat['mean']:.2f}μs")
+                self.stdscr.addstr(row+1, 20, f"Median: {lat['median']:.2f}μs")
+                self.stdscr.addstr(row+1, 40, f"P99: {lat['p99']:.2f}μs")
+                self.stdscr.addstr(row+2, 2, f"Min: {lat['min']:.2f}μs")
+                self.stdscr.addstr(row+2, 20, f"Max: {lat['max']:.2f}μs")
+                self.stdscr.addstr(row+2, 40, f"P95: {lat['p95']:.2f}μs")
+                self.stdscr.attroff(curses.color_pair(color))
+                
+                # Performance message
+                if lat['mean'] < 5:
+                    self.stdscr.addstr(row+3, 2, "🏆 WORLD-CLASS PERFORMANCE! (<5μs)", curses.color_pair(1) | curses.A_BOLD)
+                elif lat['mean'] < 10:
+                    self.stdscr.addstr(row+3, 2, "✅ EXCELLENT - Ready for HFT", curses.color_pair(1))
+                else:
+                    self.stdscr.addstr(row+3, 2, "⚠️ Above target threshold", curses.color_pair(3))
+            else:
+                self.stdscr.addstr(row+1, 2, "Collecting measurements... (takes ~5s)", curses.color_pair(3))
+                
+        except Exception as e:
+            pass
+        
+        return row + 5
+    
+    def draw_cpu_and_irq(self, row):
+        """Draw CPU isolation and IRQ affinity status"""
+        try:
+            metrics = self.monitor.metrics
+            
+            # CPU Isolation
+            self.stdscr.addstr(row, 0, "🔧 CPU ISOLATION:", curses.A_BOLD)
+            cpu = metrics.get('cpu_isolation', {})
+            if cpu:
+                color = 1 if cpu.get('status') == 'OK' else 2
+                self.stdscr.attron(curses.color_pair(color))
+                self.stdscr.addstr(row+1, 2, f"Cores {cpu.get('isolated_cpus', [2,3])}: {cpu.get('status', 'N/A')}")
+                self.stdscr.attroff(curses.color_pair(color))
+                
+                if cpu.get('violations'):
+                    self.stdscr.addstr(row+2, 2, f"⚠️ Violations: {', '.join(cpu['violations'][:60])}", curses.color_pair(2))
+                    row += 1
+            else:
+                self.stdscr.addstr(row+1, 2, "Cores [2,3]: Checking...", curses.color_pair(5))
+            
+            # IRQ Affinity
+            self.stdscr.addstr(row+3, 0, "🔌 IRQ AFFINITY:", curses.A_BOLD)
+            irq = metrics.get('irq_affinity', {})
+            if irq:
+                color = 1 if irq.get('status') == 'OK' else 2
+                self.stdscr.attron(curses.color_pair(color))
+                self.stdscr.addstr(row+4, 2, f"Status: {irq.get('status', 'N/A')}")
+                self.stdscr.attroff(curses.color_pair(color))
+                
+                if irq.get('violations'):
+                    violations_text = ', '.join(irq['violations'][:2])
+                    if len(irq['violations']) > 2:
+                        violations_text += f" (+{len(irq['violations'])-2} more)"
+                    self.stdscr.addstr(row+5, 2, f"⚠️ {violations_text[:70]}", curses.color_pair(2))
+                else:
+                    self.stdscr.addstr(row+5, 2, "✅ No IRQ violations on isolated CPUs", curses.color_pair(1))
+            else:
+                self.stdscr.addstr(row+4, 2, "Checking IRQ configuration...", curses.color_pair(5))
+                
+        except Exception as e:
+            pass
+        
+        return row + 7
+    
+    def draw_network(self, row):
+        """Draw network status"""
+        try:
+            self.stdscr.addstr(row, 0, "🌐 NETWORK INTERFACES:", curses.A_BOLD)
+            metrics = self.monitor.metrics
+            net = metrics.get('network', {})
+            
+            if net:
+                for i, (iface, stats) in enumerate(net.items()):
+                    if i < 2:  # Show first 2 interfaces
+                        if stats.get('status') == 'OK':
+                            color = 1
+                        elif stats.get('status') == 'WARNING':
+                            color = 3
+                        else:
+                            color = 2
+                        
+                        self.stdscr.attron(curses.color_pair(color))
+                        drops = stats.get('dropin', 0) + stats.get('dropout', 0)
+                        self.stdscr.addstr(row+1+i, 2, f"{iface}: {stats.get('status', 'N/A')}")
+                        self.stdscr.addstr(row+1+i, 25, f"Drops: {drops}")
+                        
+                        if 'packets_sent' in stats:
+                            self.stdscr.addstr(row+1+i, 40, f"TX: {stats['packets_sent']:,}")
+                        if 'packets_recv' in stats:
+                            self.stdscr.addstr(row+1+i, 55, f"RX: {stats['packets_recv']:,}")
+                        self.stdscr.attroff(curses.color_pair(color))
+            else:
+                self.stdscr.addstr(row+1, 2, "Collecting network stats...", curses.color_pair(5))
+                
+        except Exception as e:
+            pass
+        
+        return row + 4
+
+    def draw_gpu(self, row):
+        """Draw GPU status - Fixed to display each GPU on two separate lines"""
+        try:
+            self.stdscr.addstr(row, 0, "🎮 GPU STATUS:", curses.A_BOLD)
+            metrics = self.monitor.metrics
+            gpus = metrics.get('gpu', [])
+        
+            if gpus:
+                for i, gpu in enumerate(gpus[:2]):  # Show first 2 GPUs
+                    temp = gpu.get('temperature', 0)
+                    if temp < 70:
+                        color = 1  # Green
+                    elif temp < 85:
+                        color = 3  # Yellow
+                    else:
+                        color = 2  # Red
+                
+                    # GPU name (truncated if needed)
+                    gpu_name = gpu.get('name', f'GPU{i}')[:30]
+                
+                    # Display GPU name on its own line
+                    # GPU0: row+1, GPU1: row+3
+                    self.stdscr.addstr(row+1+(i*2), 2, f"GPU{i}: {gpu_name}")
+                
+                    # Display stats on the next line
+                    # GPU0 stats: row+2, GPU1 stats: row+4
+                    # Temperature with color
+                    self.stdscr.attron(curses.color_pair(color))
+                    self.stdscr.addstr(row+2+(i*2), 4, f"Temp: {temp:.0f}°C")
+                    self.stdscr.attroff(curses.color_pair(color))
+                
+                    # Load and Memory on same line as temperature
+                    self.stdscr.addstr(row+2+(i*2), 20, f"Load: {gpu.get('utilization', 0):.0f}%")
+                
+                    mem_used = gpu.get('memory_used', 0)
+                    mem_total = gpu.get('memory_total', 1)
+                    mem_pct = (mem_used / mem_total * 100) if mem_total > 0 else 0
+                    self.stdscr.addstr(row+2+(i*2), 35, f"Mem: {mem_used:.0f}/{mem_total:.0f}MB ({mem_pct:.0f}%)")
+            else:
+                self.stdscr.addstr(row+1, 2, "No GPU data available", curses.color_pair(5))
+            
+        except Exception as e:
+            pass
+    
+        return row + 6  # Changed to row + 6 since we're using 2 lines per GPU
+
+    def draw_alerts(self, row):
+        """Draw recent alerts"""
+        try:
+            self.stdscr.addstr(row, 0, "⚠️ RECENT ALERTS:", curses.A_BOLD)
+            
+            if self.monitor.alerts:
+                alerts = list(self.monitor.alerts)[-3:]  # Show last 3 alerts
+                for i, alert in enumerate(alerts):
+                    self.stdscr.addstr(row+1+i, 2, f"• {alert[:75]}", curses.color_pair(3))
+            else:
+                self.stdscr.addstr(row+1, 2, "✅ No alerts - System running optimally", curses.color_pair(1))
+                
+        except Exception as e:
+            pass
+        
+        return row + 5
+    
+    def draw_footer(self, row):
+        """Draw footer with status"""
+        try:
+            max_y, max_x = self.stdscr.getmaxyx()
+            self.stdscr.addstr(min(row, max_y-5), 0, "="*min(80, max_x-1))
+            self.stdscr.addstr(min(row+1, max_y-4), 0, "Press 'q' to quit | 'r' to force refresh | Updates every 10s", curses.color_pair(5))
+            
+            if self.last_update:
+                update_time = self.last_update.strftime('%H:%M:%S UTC')
+                elapsed = (datetime.now() - self.last_update).total_seconds()
+                self.stdscr.addstr(min(row+2, max_y-3), 0, 
+                    f"Last update: {update_time} | Next in: {max(0, 10-elapsed):.0f}s", 
+                    curses.color_pair(5))
+            
+            # Credits
+            self.stdscr.addstr(min(row+3, max_y-2), 0, 
+                "GitHub: ChoubChoub/AI-Trading-Station | Target: <5μs | Onload: ACTIVE", 
+                curses.color_pair(4))
+            
+        except Exception as e:
+            pass
+    
+    def run(self):
+        """Main dashboard loop"""
+        # Start background metrics updater
+        update_thread = threading.Thread(target=self.update_metrics_worker, daemon=True)
+        update_thread.start()
+        
+        # Initial metrics collection
+        self.stdscr.addstr(10, 20, "Initializing... Please wait (~5s)", curses.color_pair(3))
+        self.stdscr.refresh()
+        time.sleep(1)
+        
+        while self.running:
+            try:
+                self.stdscr.clear()
+                max_y, max_x = self.stdscr.getmaxyx()
+                
+                # Draw all components
+                self.draw_header()
+                row = 4
+                
+                row = self.draw_latency(row)
+                row = self.draw_cpu_and_irq(row)
+                row = self.draw_network(row)
+                row = self.draw_gpu(row)
+                row = self.draw_alerts(row)
+                self.draw_footer(row)
+                
+                self.stdscr.refresh()
+                
+                # Handle keyboard input
+                key = self.stdscr.getch()
+                if key == ord('q') or key == ord('Q'):
+                    self.running = False
+                elif key == ord('r') or key == ord('R'):
+                    # Force refresh
+                    self.stdscr.addstr(max_y-6, 0, "Refreshing... (takes ~5s)", curses.color_pair(3))
+                    self.stdscr.refresh()
+                    threading.Thread(target=self.monitor.collect_all_metrics, daemon=True).start()
+                    
+            except curses.error:
+                pass
+            except Exception as e:
+                pass
+            
+            time.sleep(0.1)
+
+def main(stdscr):
+    """Main entry point"""
+    try:
+        dashboard = TradingDashboard(stdscr)
+        dashboard.run()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"Dashboard error: {e}")
+
+if __name__ == '__main__':
+    curses.wrapper(main)

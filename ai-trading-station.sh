@@ -1,4 +1,5 @@
 #!/bin/bash
+<<<<<<< HEAD
 # ============================================================================
 # AI Trading Station - Monitoring & Demo Utility
 # ============================================================================
@@ -293,3 +294,139 @@ main() {
 }
 
 main "$@"
+=======
+# AI Trading Station - Master Control Interface
+# Created: 2025-09-01 12:14:26 UTC
+# User: ChoubChoub
+# Performance: 5.42μs (IMPROVED!)
+
+STATION_DIR="$HOME/ai-trading-station"
+SCRIPTS_DIR="$STATION_DIR/scripts"
+ONLOAD_WRAPPER="$SCRIPTS_DIR/onload-trading"
+BASELINE_PERF="5.42μs"
+
+print_header() {
+    echo "🚀 AI Trading Station - Master Control"
+    echo "Date: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+    echo ""
+}
+
+show_status() {
+    print_header
+    echo "📊 System Status:"
+    if command -v onload >/dev/null 2>&1; then
+        ONLOAD_VER=$(onload --version 2>/dev/null | head -1 | awk '{print $2}')
+        echo "   ✅ OnLoad: $ONLOAD_VER"
+    else
+        echo "   ❌ OnLoad: Not available"
+    fi
+    if [ -f "/etc/onload.conf" ]; then
+        echo "   ✅ OnLoad Config: Active"
+    else
+        echo "   ⚠️  OnLoad Config: Missing"
+    fi
+    if [ -f "$ONLOAD_WRAPPER" ]; then
+        echo "   ✅ Trading Wrapper: Active"
+    else
+        echo "   ⚠️  Trading Wrapper: Missing"
+    fi
+    if ip link show enp130s0f0np0 >/dev/null 2>&1; then
+        STATE=$(ip link show enp130s0f0np0 | grep -o 'state [A-Z]*' | awk '{print $2}')
+        echo "   🌐 Solarflare Port 0: $STATE"
+    fi
+    if ip link show enp130s0f1np1 >/dev/null 2>&1; then
+        STATE=$(ip link show enp130s0f1np1 | grep -o 'state [A-Z]*' | awk '{print $2}')
+        echo "   🌐 Solarflare Port 1: $STATE"
+    fi
+    FILE_COUNT=$(find $STATION_DIR -type f 2>/dev/null | wc -l)
+    echo "   📁 Organized Files: $FILE_COUNT"
+    echo ""
+    echo "🎯 Available Commands:"
+    echo "   test        - Run performance tests"
+    echo "   config      - Show configuration"
+    echo "   redis       - Setup Redis integration"
+    echo "   help        - Show help"
+}
+
+run_performance_test() {
+    print_header
+    echo "🧪 Running Performance Test..."
+    echo "Target: $BASELINE_PERF baseline"
+    echo ""
+    if [ ! -f "$STATION_DIR/tests/comprehensive_onload_test.py" ]; then
+        echo "❌ Performance test not found at $STATION_DIR/tests/"
+        return 1
+    fi
+    cd "$STATION_DIR"
+    LOG_FILE="logs/performance_$(date +%Y%m%d_%H%M%S).log"
+    echo "Running OnLoad performance test..." | tee "$LOG_FILE"
+    if [ -x "$ONLOAD_WRAPPER" ]; then
+        "$ONLOAD_WRAPPER" python3 tests/comprehensive_onload_test.py 2>&1 | tee -a "$LOG_FILE"
+    else
+        python3 tests/comprehensive_onload_test.py 2>&1 | tee -a "$LOG_FILE"
+    fi
+    echo ""
+    echo "📊 Performance Summary:"
+    if grep -q "Mean:" "$LOG_FILE"; then
+        grep -E "(Mean:|P99:|Range:)" "$LOG_FILE" | head -3
+    fi
+    echo ""
+    echo "📁 Full results saved to: $LOG_FILE"
+}
+
+show_config() {
+    print_header
+    echo "⚙️  Configuration:"
+    echo ""
+    echo "📁 Directory Structure:"
+    find "$STATION_DIR" -type f | sort | sed 's/^/   /'
+    echo ""
+    echo "🔧 System Files:"
+    echo "   OnLoad Config: /etc/onload.conf"
+    echo "   Trading Wrapper: $ONLOAD_WRAPPER"
+}
+
+setup_redis() {
+    print_header
+    echo "🔧 Redis Integration - NEXT PHASE"
+    echo "Current performance: $BASELINE_PERF (verified)"
+    echo ""
+    echo "Ready to add Redis Streams capability"
+    echo "This will preserve your excellent OnLoad performance"
+    echo ""
+    echo "💡 Next step: Create Redis integration scripts"
+}
+
+show_help() {
+    print_header
+    echo "📖 Help - AI Trading Station Commands"
+    echo ""
+    echo "Available commands:"
+    echo "   status      - Show system status (default)"
+    echo "   test        - Run performance tests"
+    echo "   config      - Show configuration"
+    echo "   redis       - Setup Redis integration"
+    echo "   help        - Show this help"
+    echo ""
+    echo "Performance: $BASELINE_PERF (improved from 5.45μs)"
+    echo "Status: Ready for production trading"
+}
+
+case "${1:-status}" in
+    "test"|"performance")
+        run_performance_test
+        ;;
+    "config"|"cfg")
+        show_config
+        ;;
+    "redis"|"redis-setup")
+        setup_redis
+        ;;
+    "help"|"--help"|"-h")
+        show_help
+        ;;
+    *)
+        show_status
+        ;;
+esac
+>>>>>>> 40d75ea (Synchronize local folder with repository)

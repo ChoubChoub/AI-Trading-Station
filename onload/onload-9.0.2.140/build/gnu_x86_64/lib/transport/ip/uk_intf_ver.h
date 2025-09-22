@@ -1,0 +1,1 @@
+#define OO_UK_INTF_VER  "2c32f3748880ec6f49d43cd0535ea4bf"

@@ -1,0 +1,240 @@
+🔐 Secure Boot status: SecureBoot disabled
+   Note: Secure Boot should be disabled or you must enroll MOK for the driver to load.
+
+📦 Updating package lists...
+Hit:1 http://hk.archive.ubuntu.com/ubuntu noble InRelease
+Hit:2 http://hk.archive.ubuntu.com/ubuntu noble-updates InRelease
+Hit:3 http://hk.archive.ubuntu.com/ubuntu noble-backports InRelease
+Hit:4 https://packages.mozilla.org/apt mozilla InRelease
+Hit:5 http://security.ubuntu.com/ubuntu noble-security InRelease
+Reading package lists...
+
+🎯 Selected driver package: nvidia-driver-535-open
+   If you prefer a different version, cancel now (Ctrl+C) and edit the script.
+
+⬇️  Installing nvidia-driver-535-open...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following package was automatically installed and is no longer required:
+  libllvm19
+Use 'sudo apt autoremove' to remove it.
+The following additional packages will be installed:
+  libnvidia-cfg1-535 libnvidia-common-535 libnvidia-compute-535
+  libnvidia-decode-535 libnvidia-egl-wayland1 libnvidia-encode-535
+  libnvidia-extra-535 libnvidia-fbc1-535 libnvidia-gl-535
+  nvidia-compute-utils-535 nvidia-dkms-535-open nvidia-firmware-535-535.247.01
+  nvidia-kernel-common-535 nvidia-kernel-source-535-open nvidia-utils-535
+  xserver-xorg-video-nvidia-535
+Suggested packages:
+  nvidia-driver-535
+Recommended packages:
+  nvidia-settings nvidia-prime libnvidia-compute-535:i386
+  libnvidia-decode-535:i386 libnvidia-encode-535:i386 libnvidia-fbc1-535:i386
+  libnvidia-gl-535:i386
+The following NEW packages will be installed:
+  libnvidia-cfg1-535 libnvidia-common-535 libnvidia-compute-535
+  libnvidia-decode-535 libnvidia-egl-wayland1 libnvidia-encode-535
+  libnvidia-extra-535 libnvidia-fbc1-535 libnvidia-gl-535
+  nvidia-compute-utils-535 nvidia-dkms-535-open nvidia-driver-535-open
+  nvidia-firmware-535-535.247.01 nvidia-kernel-common-535
+  nvidia-kernel-source-535-open nvidia-utils-535 xserver-xorg-video-nvidia-535
+0 upgraded, 17 newly installed, 0 to remove and 4 not upgraded.
+Need to get 284 MB of archives.
+After this operation, 751 MB of additional disk space will be used.
+Get:1 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 libnvidia-cfg1-535 amd64 535.247.01-0ubuntu0.24.04.1 [110 kB]
+Get:2 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 libnvidia-common-535 all 535.247.01-0ubuntu0.24.04.1 [17.3 kB]
+Get:3 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 libnvidia-compute-535 amd64 535.247.01-0ubuntu0.24.04.1 [40.3 MB]
+Get:4 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 libnvidia-decode-535 amd64 535.247.01-0ubuntu0.24.04.1 [1,886 kB]
+Get:5 http://hk.archive.ubuntu.com/ubuntu noble/main amd64 libnvidia-egl-wayland1 amd64 1:1.1.13-1build1 [30.7 kB]
+Get:6 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 libnvidia-encode-535 amd64 535.247.01-0ubuntu0.24.04.1 [98.6 kB]
+Get:7 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 libnvidia-extra-535 amd64 535.247.01-0ubuntu0.24.04.1 [72.7 kB]
+Get:8 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 libnvidia-fbc1-535 amd64 535.247.01-0ubuntu0.24.04.1 [56.9 kB]
+Get:9 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 libnvidia-gl-535 amd64 535.247.01-0ubuntu0.24.04.1 [195 MB]
+Get:10 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 nvidia-compute-utils-535 amd64 535.247.01-0ubuntu0.24.04.1 [124 kB]
+Get:11 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 nvidia-kernel-source-535-open amd64 535.247.01-0ubuntu0.24.04.1 [4,942 kB]
+Get:12 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 nvidia-firmware-535-535.247.01 amd64 535.247.01-0ubuntu0.24.04.1 [39.6 MB]
+Get:13 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 nvidia-kernel-common-535 amd64 535.247.01-0ubuntu0.24.04.1 [210 kB]
+Get:14 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 nvidia-dkms-535-open amd64 535.247.01-0ubuntu0.24.04.1 [17.4 kB]
+Get:15 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 nvidia-utils-535 amd64 535.247.01-0ubuntu0.24.04.1 [406 kB]
+Get:16 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 xserver-xorg-video-nvidia-535 amd64 535.247.01-0ubuntu0.24.04.1 [1,588 kB]
+Get:17 http://hk.archive.ubuntu.com/ubuntu noble-updates/restricted amd64 nvidia-driver-535-open amd64 535.247.01-0ubuntu0.24.04.1 [14.5 kB]
+Fetched 284 MB in 1s (192 MB/s)
+Selecting previously unselected package libnvidia-cfg1-535:amd64.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 150024 files and directories currently installed.)
+Preparing to unpack .../00-libnvidia-cfg1-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking libnvidia-cfg1-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package libnvidia-common-535.
+Preparing to unpack .../01-libnvidia-common-535_535.247.01-0ubuntu0.24.04.1_all.deb ...
+Unpacking libnvidia-common-535 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package libnvidia-compute-535:amd64.
+Preparing to unpack .../02-libnvidia-compute-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking libnvidia-compute-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package libnvidia-decode-535:amd64.
+Preparing to unpack .../03-libnvidia-decode-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking libnvidia-decode-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package libnvidia-egl-wayland1:amd64.
+Preparing to unpack .../04-libnvidia-egl-wayland1_1%3a1.1.13-1build1_amd64.deb ...
+Unpacking libnvidia-egl-wayland1:amd64 (1:1.1.13-1build1) ...
+Selecting previously unselected package libnvidia-encode-535:amd64.
+Preparing to unpack .../05-libnvidia-encode-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking libnvidia-encode-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package libnvidia-extra-535:amd64.
+Preparing to unpack .../06-libnvidia-extra-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking libnvidia-extra-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package libnvidia-fbc1-535:amd64.
+Preparing to unpack .../07-libnvidia-fbc1-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking libnvidia-fbc1-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package libnvidia-gl-535:amd64.
+Preparing to unpack .../08-libnvidia-gl-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking libnvidia-gl-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package nvidia-compute-utils-535.
+Preparing to unpack .../09-nvidia-compute-utils-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking nvidia-compute-utils-535 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package nvidia-kernel-source-535-open.
+Preparing to unpack .../10-nvidia-kernel-source-535-open_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking nvidia-kernel-source-535-open (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package nvidia-firmware-535-535.247.01.
+Preparing to unpack .../11-nvidia-firmware-535-535.247.01_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking nvidia-firmware-535-535.247.01 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package nvidia-kernel-common-535.
+Preparing to unpack .../12-nvidia-kernel-common-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking nvidia-kernel-common-535 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package nvidia-dkms-535-open.
+Preparing to unpack .../13-nvidia-dkms-535-open_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking nvidia-dkms-535-open (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package nvidia-utils-535.
+Preparing to unpack .../14-nvidia-utils-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking nvidia-utils-535 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package xserver-xorg-video-nvidia-535.
+Preparing to unpack .../15-xserver-xorg-video-nvidia-535_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking xserver-xorg-video-nvidia-535 (535.247.01-0ubuntu0.24.04.1) ...
+Selecting previously unselected package nvidia-driver-535-open.
+Preparing to unpack .../16-nvidia-driver-535-open_535.247.01-0ubuntu0.24.04.1_amd64.deb ...
+Unpacking nvidia-driver-535-open (535.247.01-0ubuntu0.24.04.1) ...
+Setting up libnvidia-fbc1-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up libnvidia-egl-wayland1:amd64 (1:1.1.13-1build1) ...
+Setting up libnvidia-common-535 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up libnvidia-extra-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up libnvidia-cfg1-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up libnvidia-gl-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up libnvidia-compute-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up nvidia-kernel-source-535-open (535.247.01-0ubuntu0.24.04.1) ...
+Setting up nvidia-utils-535 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up nvidia-firmware-535-535.247.01 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up nvidia-compute-utils-535 (535.247.01-0ubuntu0.24.04.1) ...
+info: The home dir /nonexistent you specified can't be accessed: No such file or directory
+
+info: Selecting UID from range 100 to 999 ...
+
+info: Selecting GID from range 100 to 999 ...
+info: Adding system user `nvidia-persistenced' (UID 109) ...
+info: Adding new group `nvidia-persistenced' (GID 111) ...
+info: Adding new user `nvidia-persistenced' (UID 109) with group `nvidia-persistenced' ...
+info: Not creating `/nonexistent'.
+Setting up nvidia-kernel-common-535 (535.247.01-0ubuntu0.24.04.1) ...
+update-initramfs: deferring update (trigger activated)
+Created symlink /etc/systemd/system/systemd-hibernate.service.wants/nvidia-hibernate.service → /usr/lib/systemd/system/nvidia-hibernate.service.
+Created symlink /etc/systemd/system/systemd-suspend.service.wants/nvidia-resume.service → /usr/lib/systemd/system/nvidia-resume.service.
+Created symlink /etc/systemd/system/systemd-hibernate.service.wants/nvidia-resume.service → /usr/lib/systemd/system/nvidia-resume.service.
+Created symlink /etc/systemd/system/systemd-suspend.service.wants/nvidia-suspend.service → /usr/lib/systemd/system/nvidia-suspend.service.
+Setting up libnvidia-decode-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up xserver-xorg-video-nvidia-535 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up nvidia-dkms-535-open (535.247.01-0ubuntu0.24.04.1) ...
+update-initramfs: deferring update (trigger activated)
+Loading new nvidia-535.247.01 DKMS files...
+Building for 6.8.0-79-generic
+Building for architecture x86_64
+Building initial module for 6.8.0-79-generic
+Done.
+
+nvidia.ko.zst:
+Running module version sanity check.
+ - Original module
+   - No original module exists within this kernel
+ - Installation
+   - Installing to /lib/modules/6.8.0-79-generic/updates/dkms/
+
+nvidia-modeset.ko.zst:
+Running module version sanity check.
+ - Original module
+   - No original module exists within this kernel
+ - Installation
+   - Installing to /lib/modules/6.8.0-79-generic/updates/dkms/
+
+nvidia-drm.ko.zst:
+Running module version sanity check.
+ - Original module
+   - No original module exists within this kernel
+ - Installation
+   - Installing to /lib/modules/6.8.0-79-generic/updates/dkms/
+
+nvidia-uvm.ko.zst:
+Running module version sanity check.
+ - Original module
+   - No original module exists within this kernel
+ - Installation
+   - Installing to /lib/modules/6.8.0-79-generic/updates/dkms/
+
+nvidia-peermem.ko.zst:
+Running module version sanity check.
+ - Original module
+   - No original module exists within this kernel
+ - Installation
+   - Installing to /lib/modules/6.8.0-79-generic/updates/dkms/
+depmod...
+Setting up libnvidia-encode-535:amd64 (535.247.01-0ubuntu0.24.04.1) ...
+Setting up nvidia-driver-535-open (535.247.01-0ubuntu0.24.04.1) ...
+Processing triggers for libc-bin (2.39-0ubuntu8.5) ...
+Processing triggers for man-db (2.12.0-4build2) ...
+Processing triggers for initramfs-tools (0.142ubuntu25.5) ...
+update-initramfs: Generating /boot/initrd.img-6.8.0-79-generic
+
+Running kernel seems to be up-to-date.
+
+The processor microcode seems to be up-to-date.
+
+Restarting services...
+
+Service restarts being deferred:
+ systemctl restart lightdm.service
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+
+⚙️  Enabling NVIDIA persistence daemon...
+The unit files have no installation config (WantedBy=, RequiredBy=, UpheldBy=,
+Also=, or Alias= settings in the [Install] section, and DefaultInstance= for
+template units). This means they are not meant to be enabled or disabled using systemctl.
+ 
+Possible reasons for having these kinds of units are:
+• A unit may be statically enabled by being symlinked from another unit's
+  .wants/, .requires/, or .upholds/ directory.
+• A unit's purpose may be to act as a helper for some other unit which has
+  a requirement dependency on it.
+• A unit may be started when needed via activation (socket, path, timer,
+  D-Bus, udev, scripted systemctl call, ...).
+• In case of template units, the unit is meant to be enabled with some
+  instance name specified.
+Job for nvidia-persistenced.service failed because the control process exited with error code.
+See "systemctl status nvidia-persistenced.service" and "journalctl -xeu nvidia-persistenced.service" for details.
+× nvidia-persistenced.service - NVIDIA Persistence Daemon
+     Loaded: loaded (/usr/lib/systemd/system/nvidia-persistenced.service; static)
+     Active: failed (Result: exit-code) since Wed 2025-09-10 11:13:01 EDT; 9ms ago
+    Process: 29208 ExecStart=/usr/bin/nvidia-persistenced --user nvidia-persistenced --no-persistence-mode --verbose (code=exited, status=1/FAILURE)
+    Process: 29211 ExecStopPost=/bin/rm -rf /var/run/nvidia-persistenced (code=exited, status=0/SUCCESS)
+        CPU: 6ms
+
+Sep 10 11:13:01 ai-trading-station systemd[1]: nvidia-persistenced.service: Control process exited, code=exited, status=1/FAILURE
+Sep 10 11:13:01 ai-trading-station systemd[1]: nvidia-persistenced.service: Failed with result 'exit-code'.
+Sep 10 11:13:01 ai-trading-station systemd[1]: Failed to start nvidia-persistenced.service - NVIDIA Persistence Daemon.
+
+🧪 Quick post-install check (may show limited info until after reboot):
+NVIDIA-SMI has failed because it couldn't communicate with the NVIDIA driver. Make sure that the latest NVIDIA driver is installed and running.
+
+
+✅ Driver installation completed for nvidia-driver-535-open.
+🔁 Rebooting in 5 seconds to load the driver...

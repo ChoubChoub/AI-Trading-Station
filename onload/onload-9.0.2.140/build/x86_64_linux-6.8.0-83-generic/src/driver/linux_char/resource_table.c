@@ -1,0 +1,1 @@
+../../../../../src/driver/linux_char/resource_table.c

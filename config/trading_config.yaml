@@ -1,0 +1,5 @@
+
+monitoring:
+  log_level: INFO
+  update_interval: 10
+  enabled: true

@@ -1,0 +1,1 @@
+../../../../../src/lib/efrm/vi_resource_event.c

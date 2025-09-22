@@ -1,0 +1,43 @@
+# OnLoad Configuration for AI Trading Station
+# Created: 2025-09-01 10:40:34 UTC by ChoubChoub
+# Target: Ultra-low latency algorithmic trading
+
+# Core performance settings for trading
+EF_POLL_USEC=0              # Never sleep - always poll (critical for trading)
+EF_INT_DRIVEN=0             # Pure polling mode for deterministic latency
+EF_PACKET_BUFFER_MODE=0     # Most efficient buffer management
+EF_SPIN_USEC=1000000       # Spin for 1 second before yielding (trading priority)
+
+# Buffer configuration for high-frequency data
+EF_RXQ_SIZE=2048           # Larger RX queue for market data bursts
+EF_TXQ_SIZE=1024           # Optimized TX queue for order submission
+EF_VI_RXQ_SIZE=2048        # Virtual interface RX optimization
+EF_VI_TXQ_SIZE=1024        # Virtual interface TX optimization
+
+# CPU affinity for trading cores (2,3 isolated in GRUB)
+EF_CLUSTER_CORE_AFFINITY=2,3
+EF_IRQ_CORE_AFFINITY=2,3   # Bind interrupts to isolated cores
+
+# Memory management for consistent performance
+EF_USE_HUGE_PAGES=0        # Disable to avoid allocation latency spikes
+EF_PREALLOC_PACKETS=1      # Pre-allocate for deterministic performance
+EF_MAX_PACKETS=65536       # Sufficient packet pool for trading workload
+
+# Advanced trading-specific settings
+EF_POLL_ON_DEMAND=0        # Always maintain polling threads
+EF_INT_REPRIME=0           # Disable interrupt re-priming overhead
+EF_PERIODIC_TIMER_CPU=3    # Use isolated core for timing
+
+# Disable features that add latency
+EF_LOG_LEVEL=0             # Minimal logging for production
+EF_LOG_FILE=/dev/null      # No log file overhead
+EF_NO_FAIL=0               # Fail fast on issues (don't fallback)
+
+# TCP optimizations for trading protocols
+EF_TCP_RECV_NONBLOCK=1     # Non-blocking receives
+EF_TCP_SEND_NONBLOCK=1     # Non-blocking sends
+EF_UDP_RECV_SPIN=1         # Spin on UDP receives (market data)
+EF_UDP_SEND_SPIN=1         # Spin on UDP sends
+
+# Redis Streams optimization (AI Trading Station architecture)
+EF_SOCKET_CACHE_MAX=1024   # Cache sockets for Redis connections

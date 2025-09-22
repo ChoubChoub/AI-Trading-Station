@@ -1,0 +1,5 @@
+Running OnLoad performance test...
+🚀 OnLoad Trading Wrapper v2.0 - ChoubChoub AI Trading Station
+Date: Mon Sep  8 12:37:50 AM UTC 2025
+Target cores: 2,3
+taskset: failed to execute onload: No such file or directory
