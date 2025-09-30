@@ -1,0 +1,10 @@
+{
+  "ts":"2025-09-28T11:12:27Z",
+  "mode":"invoke",
+  "source_version":"monitor_wrapper_v2",
+  "set":{"p50":1,"p95":2,"p99":4,"jitter":3,"count":10000},
+  "xadd":{"p50":1,"p95":3,"p99":6,"jitter":5,"count":2000},
+  "rtt":{"p50":8.60,"p95":8.90,"p99":9.71,"jitter":1.11,"count":2000},
+  "stream_lag":{"enabled":false},
+  "health":{"mem_used_human":"1.79M","clients":1,"ops_per_sec":0}
+}

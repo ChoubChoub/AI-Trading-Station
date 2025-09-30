@@ -1,0 +1,6 @@
+=== CPU 2 C-states ===
+C-states not available for CPU 2
+=== CPU 3 C-states ===
+C-states not available for CPU 3
+=== CPU 4 C-states ===
+C-states not available for CPU 4

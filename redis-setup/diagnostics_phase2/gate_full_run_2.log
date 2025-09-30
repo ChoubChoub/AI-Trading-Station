@@ -1,0 +1,10 @@
+[2025-09-28 06:39:31] === Redis HFT Performance Gate vperf_gate_v1.0 ===
+[2025-09-28 06:39:31] Mode: Bootstrap=false, SoftFail=false, MetricsOnly=false, FingerprintOnly=false
+[2025-09-28 06:39:31] --- Performance Gate Check ---
+[2025-09-28 06:39:31] Performance: FAIL (exit code: 1)
+[2025-09-28 06:39:31] PERFORMANCE_HARD_FAIL
+[2025-09-28 06:39:31] FAIL: RTT P99: 12.03μs > 12.0μs
+[2025-09-28 06:39:31] --- Environment Fingerprint Check ---
+[2025-09-28 06:39:31] Fingerprint: PASS
+[2025-09-28 06:39:31] --- Final Gate Decision ---
+[2025-09-28 06:39:31] 🚫 GATE: SOFT FAIL REJECTED - Fix issues before trading

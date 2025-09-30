@@ -1,0 +1,112 @@
+# Redis HFT Configuration Tuning Proposal
+# Conservative modifications to GPT's aggressive proposal
+# Created: September 27, 2025
+# Status: STAGING ONLY - DO NOT DEPLOY DIRECTLY
+
+################################## TUNING CHANGES #############################
+
+# CHANGE 1: Reduce database count (16 → 1)
+# Impact: Reduce memory overhead, faster select operations
+# Risk: NONE (only using db 0 anyway)
+# Current: databases 16 (default)
+databases 1
+
+# CHANGE 2: Faster dead peer detection (300s → 30s)  
+# Impact: Quicker detection of stale connections
+# Risk: NONE for loopback connections
+# Current: tcp-keepalive 300
+tcp-keepalive 30
+
+# CHANGE 3: TCP_NODELAY is implicit in Redis 
+# Impact: Redis automatically uses TCP_NODELAY for client connections
+# Risk: NONE - no configuration needed
+# Current: automatically enabled (no config directive needed)
+# Note: tcp-nodelay is NOT a valid Redis config directive
+
+# CHANGE 4: Reduce background task frequency (10Hz → 8Hz)
+# Impact: Fewer timer interrupts, potential jitter reduction
+# Risk: MEDIUM (slower passive expiry, background cleanup)
+# Current: hz 10
+# GPT proposed: hz 5 (TOO AGGRESSIVE)
+hz 8
+
+# CHANGE 5: Conservative memory limit reduction (4GB → 1GB)
+# Impact: More predictable memory usage, force efficiency
+# Risk: MEDIUM (potential evictions under load spikes)  
+# Current: maxmemory 4gb
+# GPT proposed: maxmemory 256mb (TOO AGGRESSIVE)
+maxmemory 1gb
+
+################################## REJECTED CHANGES ###########################
+
+# REJECTED: maxmemory-policy change
+# GPT proposed: allkeys-lru or volatile-ttl
+# Decision: Keep noeviction (avoid surprise evictions)
+# Current: maxmemory-policy noeviction (KEEP)
+
+# REJECTED: dynamic-hz change  
+# GPT proposed: dynamic-hz no
+# Decision: Already set optimally
+# Current: dynamic-hz no (KEEP)
+
+# REJECTED: Extreme memory reduction
+# GPT proposed: 256MB 
+# Decision: Too risky (17x reduction)
+# Using: 1GB (4x reduction, more conservative)
+
+################################## DEFERRED CHANGES ###########################
+
+# DEFERRED: latency-monitor-threshold 0
+# Reason: Need to measure monitoring overhead first
+# Action: Test separately after core changes
+
+# DEFERRED: activedefrag configuration
+# Reason: Already implicitly disabled, verify explicitly if needed
+# Action: Check current state first
+
+################################## KEEP EXISTING ################################
+
+# These settings are already optimal, no changes needed:
+# timeout 0                           (already set)
+# client-output-buffer-limit normal 0 0 0 (already set)
+# maxmemory-policy noeviction         (keep as-is)
+# dynamic-hz no                       (keep as-is)
+# save ""                             (keep as-is)  
+# appendonly no                       (keep as-is)
+
+################################## VALIDATION PLAN ##########################
+
+# Phase 1: Individual change testing
+# - Test each change separately to isolate impact
+# - Measure: SET P99, XADD P99, RTT P99, jitter
+# - Target: Improve RTT P99 from 15.31μs to <12μs
+
+# Phase 2: Combined testing  
+# - Apply successful individual changes together
+# - Stress test with higher loads
+# - Monitor for unexpected behavior
+
+# Phase 3: Production validation
+# - Deploy during low-risk window
+# - Monitor performance gate compliance
+# - Keep rollback plan ready
+
+################################## ROLLBACK PLAN ############################
+
+# 1. Keep original config backed up
+# 2. Use systemd include overlay method
+# 3. Quick rollback: remove include + restart
+# 4. Emergency: restore from backup
+
+################################## EXPECTED RESULTS ##########################
+
+# Conservative estimates based on proposed changes:
+# - RTT P99: 15.31μs → 10-12μs (20-30% improvement)
+# - SET P99: 5μs → 3-4μs (20% improvement)  
+# - Jitter: 4-5μs → 3-4μs (reduced background noise)
+# - Memory efficiency: More predictable usage pattern
+
+# Success criteria:
+# - All performance gate thresholds PASS
+# - No regression in critical operations
+# - Reduced tail latencies and jitter

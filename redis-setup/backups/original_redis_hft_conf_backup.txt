@@ -1,0 +1,85 @@
+# Redis HFT Configuration for AI Trading Station
+# Created: Fri Sep 26 02:09:35 AM UTC 2025
+# Purpose: Ultra-low latency trading with OnLoad integration
+# Integrates with existing CPU isolation (cores 2,3 for trading, 0,1 for housekeeping)
+
+################################## NETWORK #####################################
+port 6379
+bind 127.0.0.1
+timeout 0
+tcp-keepalive 300
+tcp-backlog 32768
+
+################################## GENERAL #####################################
+daemonize no
+supervised systemd
+
+################################## SECURITY ####################################
+protected-mode yes
+# requirepass disabled for HFT simplicity
+
+################################## MEMORY MANAGEMENT ###########################
+# Memory optimized for HFT workloads (leave room for trading applications)
+maxmemory 4gb
+maxmemory-policy noeviction
+maxmemory-samples 10
+
+################################## PERSISTENCE #################################
+# HFT Ephemeral Primary: No persistence to eliminate latency spikes
+# Use replica for durability if needed
+save ""
+appendonly no
+dir /var/lib/redis-hft
+
+################################## CLIENTS #####################################
+# Optimized for trading connections
+maxclients 1000
+client-output-buffer-limit normal 0 0 0
+client-output-buffer-limit replica 256mb 64mb 60
+client-output-buffer-limit pubsub 32mb 8mb 60
+
+################################## PERFORMANCE #################################
+# Network optimizations (TCP_NODELAY handled by OnLoad at socket level)
+
+# Deterministic performance for HFT
+hz 10
+dynamic-hz no
+
+# Redis Streams optimization for trading
+stream-node-max-bytes 4096
+stream-node-max-entries 100
+
+################################## SLOW LOG ####################################
+slowlog-log-slower-than 1000
+slowlog-max-len 1000
+
+################################## LOGGING #####################################
+loglevel notice
+logfile ""
+syslog-enabled no
+
+################################## KEYSPACE EVENTS #########################
+# Disable to reduce jitter (enable only if actively consuming events)
+notify-keyspace-events ""
+
+################################## ADVANCED CONFIG #########################
+# Disable features that add latency
+stop-writes-on-bgsave-error no
+
+# Lazy free optimizations for deterministic performance
+lazyfree-lazy-eviction yes
+lazyfree-lazy-expire yes
+lazyfree-lazy-server-del yes
+
+# Threading: Start with single thread for predictability (enable if needed)
+io-threads 1
+
+################################## MODULES #####################################
+# Ready for RedisTimeSeries if needed for OHLCV data
+# loadmodule /path/to/redistimeseries.so
+
+################################## REPLICA/SENTINEL CONFIG ##################
+# Master configuration (replica setup available in step 4)
+# replica-read-only yes
+# min-replicas-to-write 1
+# min-replicas-max-lag 3
