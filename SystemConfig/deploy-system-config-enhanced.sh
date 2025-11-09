@@ -87,8 +87,9 @@ show_components() {
     echo "  [6] onload              - Solarflare Onload configuration"
     echo "  [7] sysctl              - System tuning parameters"
     echo "  [8] udev                - Hardware device rules"
-    echo "  [9] cron                - Scheduled jobs (crontab)"
-    echo "  [0] shell               - Shell environment (bashrc.trading)"
+    echo "  [9] sudoers             - Passwordless sudo configurations"
+    echo "  [c] cron                - Scheduled jobs (crontab)"
+    echo "  [s] shell               - Shell environment (bashrc.trading)"
     echo "  [a] all                 - Deploy everything"
     echo ""
 }
@@ -101,7 +102,7 @@ interactive_selection() {
     read -r selection
     
     if [[ "$selection" == "a" ]] || [[ "$selection" == "all" ]]; then
-        SELECTED_COMPONENTS=(systemd-services systemd-overrides kernel network redis onload sysctl udev cron shell)
+        SELECTED_COMPONENTS=(systemd-services systemd-overrides kernel network redis onload sysctl udev sudoers cron shell)
         log_select "Selected: ALL components"
     else
         for num in $selection; do
@@ -114,8 +115,9 @@ interactive_selection() {
                 6) SELECTED_COMPONENTS+=(onload) ;;
                 7) SELECTED_COMPONENTS+=(sysctl) ;;
                 8) SELECTED_COMPONENTS+=(udev) ;;
-                9) SELECTED_COMPONENTS+=(cron) ;;
-                0) SELECTED_COMPONENTS+=(shell) ;;
+                9) SELECTED_COMPONENTS+=(sudoers) ;;
+                c|C) SELECTED_COMPONENTS+=(cron) ;;
+                s|S) SELECTED_COMPONENTS+=(shell) ;;
                 *) log_warning "Unknown selection: $num" ;;
             esac
         done
@@ -614,6 +616,44 @@ deploy_udev_rules() {
     fi
 }
 
+# Deploy sudoers files
+deploy_sudoers() {
+    if ! is_selected "sudoers"; then
+        return 0
+    fi
+    
+    echo ""
+    log_info "═══════════════════════════════════════════════════════════════"
+    log_info "Deploying Sudoers Configuration"
+    log_info "═══════════════════════════════════════════════════════════════"
+    
+    if [[ -d "$SYSTEMCONFIG_DIR/sudoers.d" ]]; then
+        for sudoers_file in "$SYSTEMCONFIG_DIR/sudoers.d"/*; do
+            # Skip README and backup files
+            if [[ -f "$sudoers_file" ]] && [[ ! "$sudoers_file" =~ README ]] && [[ ! "$sudoers_file" =~ \.backup\. ]]; then
+                local sudoers_name=$(basename "$sudoers_file")
+                local dest_path=$(get_dest_path "/etc/sudoers.d/$sudoers_name")
+                
+                # Sudoers files must have 0440 permissions
+                copy_file_with_diff "$sudoers_file" "$dest_path" "440" "$TEST_MODE"
+                
+                # Validate sudoers syntax after deployment
+                if [[ "$TEST_MODE" != true ]] && [[ "$DRY_RUN" != true ]]; then
+                    if ! visudo -c -f "$dest_path" &>/dev/null; then
+                        log_error "Sudoers validation failed for $dest_path - removing file"
+                        rm -f "$dest_path"
+                        return 1
+                    else
+                        log_success "Sudoers file validated: $sudoers_name"
+                    fi
+                fi
+            fi
+        done
+    else
+        log_warning "No sudoers.d directory found in $SYSTEMCONFIG_DIR/sudoers.d"
+    fi
+}
+
 # Deploy cron jobs
 deploy_cron_jobs() {
     if ! is_selected "cron"; then
@@ -1023,6 +1063,7 @@ main() {
         deploy_onload_configs
         deploy_sysctl_configs
         deploy_udev_rules
+        deploy_sudoers
         deploy_cron_jobs
         deploy_shell
     fi
@@ -1077,7 +1118,7 @@ parse_arguments() {
                 SELECTED_ITEMS+=("network:$1")
                 shift
                 ;;
-            systemd-services|systemd-overrides|kernel|network|redis|onload|sysctl|udev|cron|shell)
+            systemd-services|systemd-overrides|kernel|network|redis|onload|sysctl|udev|sudoers|cron|shell)
                 SELECTIVE_MODE=true
                 SELECTED_COMPONENTS+=("$1")
                 shift

@@ -38,6 +38,13 @@ alias trading-mode='set-monitoring-mode trading'
 alias monitor-mode='set-monitoring-mode notrading'
 alias monitoring-status='set-monitoring-mode status'
 
+# Desktop mode management (passwordless via sudoers)
+alias desktop-status='sudo ~/ai-trading-station/Services/System/toggle-desktop-mode.sh status'
+alias desktop-start='sudo ~/ai-trading-station/Services/System/toggle-desktop-mode.sh start'
+alias desktop-stop='sudo ~/ai-trading-station/Services/System/toggle-desktop-mode.sh stop'
+alias desktop-server='sudo ~/ai-trading-station/Services/System/toggle-desktop-mode.sh server'
+alias desktop-mode='sudo ~/ai-trading-station/Services/System/toggle-desktop-mode.sh desktop'
+
 # ============================================================================
 # Notes
 # ============================================================================
@@ -45,4 +52,5 @@ alias monitoring-status='set-monitoring-mode status'
 # 2. TRADING_PRODUCTION_MODE controls whether monitoring tools affect production
 # 3. Onload wrapper path is hardcoded in monitordash alias - update if moved
 # 4. GITHUB_TOKEN should be stored separately in a secure file, not here
+# 5. Desktop mode aliases use passwordless sudo via /etc/sudoers.d/desktop-toggle
 # ============================================================================

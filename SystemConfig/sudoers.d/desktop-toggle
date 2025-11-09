@@ -1,0 +1,3 @@
+# Allow passwordless execution of desktop mode toggle script
+# AI Trading Station - Desktop Mode Management
+youssefbahloul ALL=(ALL) NOPASSWD: /home/youssefbahloul/ai-trading-station/Services/System/toggle-desktop-mode.sh

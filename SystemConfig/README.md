@@ -60,8 +60,14 @@ SystemConfig/
 │       ├── questdb.service
 │       ├── redis-hft.service
 │       └── ultra-low-latency-nic.service
-└── udev/                             # 🔌 Hardware device rules → /etc/udev/rules.d/
-    └── rules.d/
+├── sudoers.d/                        # 🔐 Passwordless sudo configs → /etc/sudoers.d/
+│   ├── desktop-toggle
+│   ├── lspci-monitoring
+│   └── redis-monitoring
+├── udev/                             # 🔌 Hardware device rules → /etc/udev/rules.d/
+│   └── rules.d/
+└── shell/                            # 🐚 Shell environment → ~/.bashrc.trading
+    └── bashrc.trading
 ```
 
 **Legacy Script:** `Services/System/deploy-system-config.sh` (original version, still functional)
@@ -243,7 +249,9 @@ sudo ./deploy-system-config-enhanced.sh --dry-run
 | 6 | **onload** | Solarflare Onload configuration | 2 configs → `/etc/modprobe.d/` |
 | 7 | **sysctl** | System tuning parameters | 2 configs → `/etc/sysctl.d/` |
 | 8 | **udev** | Hardware device rules | 1 rule → `/etc/udev/rules.d/` |
-| 9 | **cron** | Scheduled jobs (crontab) | Appends to user crontab |
+| 9 | **sudoers** | Passwordless sudo configurations | 3 files → `/etc/sudoers.d/` |
+| c | **cron** | Scheduled jobs (crontab) | Appends to user crontab |
+| s | **shell** | Shell environment (bashrc.trading) | 1 file → `~/.bashrc.trading` |
 | a | **all** | Deploy everything | All of the above |
 
 ---

@@ -1,0 +1,3 @@
+# Allow monitoring user to run Redis monitoring scripts without password
+youssefbahloul ALL=(ALL) NOPASSWD: /home/youssefbahloul/ai-trading-station/Services/Monitoring/Scripts/Runtime/perf-gate.sh
+youssefbahloul ALL=(ALL) NOPASSWD: /home/youssefbahloul/ai-trading-station/Monitoring/Config/redis-hft-monitor_to_json.sh
