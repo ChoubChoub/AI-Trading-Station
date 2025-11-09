@@ -1,1 +1,0 @@
-../../../../../src/driver/linux_resource/syscall_aarch64.c

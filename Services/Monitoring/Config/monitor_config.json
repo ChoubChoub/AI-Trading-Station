@@ -1,0 +1,130 @@
+{
+  "cpu": {
+    "isolated_cores": [
+      2,
+      3
+    ],
+    "expected_governor": "performance",
+    "temp_threshold": 75,
+    "temp_critical": 85,
+    "temp_warning": 70,
+    "usage_threshold": 5
+  },
+  "network": {
+    "trading_interfaces": [
+      "enp130s0f0",
+      "enp130s0f1"
+    ],
+    "error_threshold": 0,
+    "drop_threshold": 0,
+    "ultra_low_latency": {
+      "primary_interface": "enp130s0f0",
+      "adaptive_rx_expected": "off",
+      "xps_expected_mask": "0c",
+      "xps_expected_cores": [
+        2,
+        3
+      ],
+      "ring_rx_expected": 512,
+      "ring_tx_expected": 512,
+      "rps_expected": "00",
+      "required_services": [
+        "ultra-low-latency-nic.service",
+        "configure-nic-irq-affinity.service"
+      ],
+      "check_interval_seconds": 30,
+      "critical_checks": [
+        "adaptive_rx",
+        "xps_config",
+        "irq_violations"
+      ],
+      "warning_checks": [
+        "ring_buffers",
+        "rps_config"
+      ]
+    }
+  },
+  "gpu": {
+    "temp_threshold": 80,
+    "util_threshold": 90
+  },
+  "gpu_optimization": {
+    "enabled": true,
+    "target_graphics_clock_mhz": 3090,
+    "target_memory_clock_mhz": 14001,
+    "max_power_limit_w": 325,
+    "expected_vram_per_gpu_gb": 96,
+    "expected_gpu_count": 2,
+    "temp_warning": 75,
+    "temp_critical": 83,
+    "vram_warning_percent": 90,
+    "vram_critical_percent": 95,
+    "check_clock_lock": true,
+    "check_throttling": true,
+    "check_persistence_mode": true,
+    "collection_interval_seconds": 30,
+    "idle_clock_threshold_mhz": 300,
+    "clock_drift_tolerance_mhz": 100,
+    "power_limit_tolerance_w": 10,
+    "description": "GPU optimization monitoring for dual RTX PRO 6000 Blackwell Max-Q with locked clocks at 3090/14001 MHz and 325W power limits"
+  },
+  "processes": {
+    "trading": [
+      "trading_app",
+      "market_data",
+      "order_manager"
+    ]
+  },
+  "monitoring": {
+    "interval": 5,
+    "log_path": "/var/log/trading_monitor",
+    "enable_alerts": true,
+    "alert_email": "",
+    "prometheus_export": true,
+    "prometheus_port": 9100,
+    "log_level": "INFO",
+    "interval_seconds": 5,
+    "production_mode": true
+  },
+  "system": {
+    "isolated_cpus": [],
+    "network_interfaces": [
+      "enp130s0f0",
+      "enp130s0f1"
+    ]
+  },
+  "thresholds": {
+    "cpu_isolated_usage_percent": 5,
+    "network_drops_max": 0,
+    "network_drop_rate_ok": 0.5,
+    "network_drop_rate_warning": 1.0,
+    "network_drop_rate_critical": 10.0,
+    "latency_mean_microseconds": 10.0,
+    "irq_violations_max": 0,
+    "network_ull_check_timeout": 10,
+    "service_status_critical": true
+  },
+  "redis_hft": {
+    "enabled": true,
+    "monitor_script": "/home/youssefbahloul/ai-trading-station/Services/Monitoring/Config/redis-hft-monitor_to_json.sh",
+    "perf_gate_script": "/home/youssefbahloul/ai-trading-station/Services/Monitoring/Scripts/Runtime/perf-gate.sh",
+    "thresholds": {
+      "rtt_p99_max_us": 250.0,
+      "rtt_p95_max_us": 50.0,
+      "rtt_jitter_max_us": 200.0,
+      "set_p99_max_us": 5.0,
+      "xadd_p99_max_us": 6.0,
+      "ops_per_sec_min": 10000,
+      "memory_max_mb": 4096
+    },
+    "service_name": "redis-hft.service",
+    "port": 6379,
+    "check_interval_seconds": 10,
+    "display_metrics": [
+      "rtt",
+      "set",
+      "xadd",
+      "health"
+    ]
+  }
+}

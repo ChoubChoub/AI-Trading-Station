@@ -1,0 +1,682 @@
+{
+  "dashboard": {
+    "title": "Tiered Cache Performance",
+    "tags": ["cache", "performance", "day5", "tiered-cache"],
+    "timezone": "browser",
+    "schemaVersion": 27,
+    "version": 1,
+    "refresh": "5s",
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m"]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Cache Hit Rate by Tier (%)",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 0,
+          "w": 24,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "(sum(cache_hits_total{job=\"tiered-cache\", tier=\"HOT\"}) / sum(cache_requests_total{job=\"tiered-cache\", tier=\"REQUEST\"})) * 100",
+            "legendFormat": "HOT Cache (Target: >60%)",
+            "refId": "A"
+          },
+          {
+            "expr": "(sum(cache_hits_total{job=\"tiered-cache\", tier=\"WARM\"}) / sum(cache_requests_total{job=\"tiered-cache\", tier=\"REQUEST\"})) * 100",
+            "legendFormat": "WARM Cache (Target: >30%)",
+            "refId": "B"
+          },
+          {
+            "expr": "(sum(cache_hits_total{job=\"tiered-cache\", tier=\"COLD\"}) / sum(cache_requests_total{job=\"tiered-cache\", tier=\"REQUEST\"})) * 100",
+            "legendFormat": "COLD Cache (QuestDB)",
+            "refId": "C"
+          },
+          {
+            "expr": "(sum(cache_hits_total{job=\"tiered-cache\", tier=~\"HOT|WARM\"}) / sum(cache_requests_total{job=\"tiered-cache\", tier=\"REQUEST\"})) * 100",
+            "legendFormat": "Overall Cache Hit Rate (Target: >95%)",
+            "refId": "D"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "percent",
+            "label": "Hit Rate",
+            "max": 100,
+            "min": 0
+          },
+          {
+            "format": "short"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "thresholds": [
+          {
+            "value": 60,
+            "colorMode": "custom",
+            "op": "gt",
+            "fill": false,
+            "line": true,
+            "lineColor": "rgba(50, 172, 45, 0.7)",
+            "yaxis": "left"
+          },
+          {
+            "value": 95,
+            "colorMode": "custom",
+            "op": "gt",
+            "fill": false,
+            "line": true,
+            "lineColor": "rgba(73, 209, 73, 0.9)",
+            "yaxis": "left"
+          }
+        ],
+        "seriesOverrides": [
+          {
+            "alias": "/Overall Cache Hit Rate.*/",
+            "linewidth": 3,
+            "color": "#73BF69"
+          },
+          {
+            "alias": "/HOT Cache.*/",
+            "color": "#FF9830"
+          },
+          {
+            "alias": "/WARM Cache.*/",
+            "color": "#FFD700"
+          },
+          {
+            "alias": "/COLD Cache.*/",
+            "color": "#C0C0C0"
+          }
+        ],
+        "legend": {
+          "show": true,
+          "values": true,
+          "current": true,
+          "max": true,
+          "alignAsTable": true
+        },
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "datasource": "Prometheus"
+      },
+      {
+        "id": 2,
+        "title": "Cache Latency P99 with SLA Thresholds (ms)",
+        "type": "graph",
+        "gridPos": {
+          "x": 0,
+          "y": 8,
+          "w": 24,
+          "h": 8
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(cache_latency_seconds_bucket{job=\"tiered-cache\", tier=\"HOT\"}[1m])) by (le)) * 1000",
+            "legendFormat": "HOT Cache P99 (SLA: <1ms)",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(cache_latency_seconds_bucket{job=\"tiered-cache\", tier=\"WARM\"}[1m])) by (le)) * 1000",
+            "legendFormat": "WARM Cache P99 (SLA: <2ms)",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(cache_latency_seconds_bucket{job=\"tiered-cache\", tier=\"COLD\"}[1m])) by (le)) * 1000",
+            "legendFormat": "COLD Cache P99 (SLA: <5ms)",
+            "refId": "C"
+          },
+          {
+            "expr": "(sum(rate(cache_latency_seconds_sum{job=\"tiered-cache\"}[1m])) / sum(rate(cache_latency_seconds_count{job=\"tiered-cache\"}[1m]))) * 1000",
+            "legendFormat": "Average Latency",
+            "refId": "D"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "ms",
+            "label": "Latency",
+            "min": 0,
+            "max": 15
+          },
+          {
+            "format": "short"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "stack": false,
+        "fill": 0,
+        "linewidth": 3,
+        "nullPointMode": "connected",
+        "thresholds": [
+          {
+            "value": 1,
+            "colorMode": "custom",
+            "op": "gt",
+            "fill": false,
+            "line": true,
+            "lineColor": "rgba(50, 172, 45, 0.6)",
+            "yaxis": "left"
+          },
+          {
+            "value": 2,
+            "colorMode": "custom",
+            "op": "gt",
+            "fill": false,
+            "line": true,
+            "lineColor": "rgba(255, 215, 0, 0.6)",
+            "yaxis": "left"
+          },
+          {
+            "value": 5,
+            "colorMode": "custom",
+            "op": "gt",
+            "fill": false,
+            "line": true,
+            "lineColor": "rgba(237, 129, 40, 0.6)",
+            "yaxis": "left"
+          }
+        ],
+        "seriesOverrides": [
+          {
+            "alias": "/HOT Cache P99.*/",
+            "color": "#FF6B6B",
+            "linewidth": 3
+          },
+          {
+            "alias": "/WARM Cache P99.*/",
+            "color": "#FFD93D",
+            "linewidth": 3
+          },
+          {
+            "alias": "/COLD Cache P99.*/",
+            "color": "#6BCB77",
+            "linewidth": 3
+          },
+          {
+            "alias": "Average Latency",
+            "color": "#4D96FF",
+            "linewidth": 4,
+            "dashes": true
+          }
+        ],
+        "legend": {
+          "show": true,
+          "values": true,
+          "current": true,
+          "max": true,
+          "alignAsTable": true
+        },
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "datasource": "Prometheus"
+      },
+      {
+        "id": 3,
+        "title": "Cache Size (Entries per Tier)",
+        "type": "stat",
+        "gridPos": {
+          "x": 0,
+          "y": 16,
+          "w": 8,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(cache_size_entries{job=\"tiered-cache\", tier=\"HOT\"})",
+            "legendFormat": "HOT",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(cache_size_entries{job=\"tiered-cache\", tier=\"WARM\"})",
+            "legendFormat": "WARM",
+            "refId": "B"
+          },
+          {
+            "expr": "sum(cache_size_entries{job=\"tiered-cache\", tier=\"COLD\"})",
+            "legendFormat": "COLD",
+            "refId": "C"
+          }
+        ],
+        "options": {
+          "graphMode": "area",
+          "colorMode": "background",
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "green"
+                },
+                {
+                  "value": 80000,
+                  "color": "yellow"
+                },
+                {
+                  "value": 95000,
+                  "color": "red"
+                }
+              ]
+            },
+            "mappings": []
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "HOT"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "HOT Cache (Memory)"
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "orange"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "WARM"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "WARM Cache (Redis)"
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "yellow"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "COLD"
+              },
+              "properties": [
+                {
+                  "id": "displayName",
+                  "value": "COLD Storage (QuestDB)"
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "blue"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "datasource": "Prometheus"
+      },
+      {
+        "id": 4,
+        "title": "Write Latency Distribution (Heatmap)",
+        "type": "heatmap",
+        "gridPos": {
+          "x": 8,
+          "y": 16,
+          "w": 8,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(increase(questdb_insert_latency_seconds_bucket[1m])) by (le)",
+            "format": "heatmap",
+            "legendFormat": "{{le}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "calculate": false,
+          "color": {
+            "mode": "scheme",
+            "scheme": "Spectral",
+            "steps": 128
+          },
+          "yAxis": {
+            "unit": "s",
+            "decimals": 3,
+            "min": "0",
+            "max": "0.05"
+          },
+          "legend": {
+            "show": true
+          },
+          "tooltip": {
+            "show": true,
+            "yHistogram": true
+          },
+          "exemplars": {
+            "color": "rgba(255,0,255,0.7)"
+          },
+          "cellGap": 1,
+          "cellRadius": 0
+        },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "hideFrom": {
+                "tooltip": false,
+                "viz": false,
+                "legend": false
+              },
+              "scaleDistribution": {
+                "type": "linear"
+              }
+            }
+          }
+        },
+        "datasource": "Prometheus"
+      },
+      {
+        "id": 5,
+        "title": "Cache Latency Distribution (Heatmap)",
+        "type": "heatmap",
+        "gridPos": {
+          "x": 16,
+          "y": 16,
+          "w": 8,
+          "h": 6
+        },
+        "targets": [
+          {
+            "expr": "sum(increase(cache_latency_seconds_bucket{job=\"tiered-cache\"}[1m])) by (le)",
+            "format": "heatmap",
+            "legendFormat": "{{le}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "calculate": false,
+          "color": {
+            "mode": "scheme",
+            "scheme": "Greens",
+            "steps": 64
+          },
+          "yAxis": {
+            "unit": "s",
+            "decimals": 4,
+            "min": "0",
+            "max": "0.01"
+          },
+          "legend": {
+            "show": true
+          },
+          "tooltip": {
+            "show": true,
+            "yHistogram": true
+          },
+          "exemplars": {
+            "color": "rgba(255,0,255,0.7)"
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "hideFrom": {
+                "tooltip": false,
+                "viz": false,
+                "legend": false
+              },
+              "scaleDistribution": {
+                "type": "log",
+                "log": 2
+              }
+            }
+          }
+        },
+        "datasource": "Prometheus"
+      },
+      {
+        "id": 6,
+        "title": "Cache Status (Mobile)",
+        "type": "stat",
+        "gridPos": {
+          "x": 0,
+          "y": 22,
+          "w": 8,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "(sum(rate(cache_hits_total{job=\"tiered-cache\", tier=~\"HOT|WARM\"}[5m])) / sum(rate(cache_requests_total{job=\"tiered-cache\", tier=\"REQUEST\"}[5m]))) * 100",
+            "legendFormat": "Cache Hit Rate",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "graphMode": "none",
+          "colorMode": "background",
+          "textMode": "value_and_name",
+          "orientation": "vertical",
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          }
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "red"
+                },
+                {
+                  "value": 90,
+                  "color": "yellow"
+                },
+                {
+                  "value": 95,
+                  "color": "green"
+                }
+              ]
+            },
+            "unit": "percent",
+            "decimals": 2
+          }
+        },
+        "datasource": "Prometheus"
+      },
+      {
+        "id": 7,
+        "title": "Cache Requests Rate (per second)",
+        "type": "graph",
+        "gridPos": {
+          "x": 8,
+          "y": 22,
+          "w": 8,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "sum(rate(cache_requests_total{job=\"tiered-cache\", tier=\"REQUEST\"}[1m]))",
+            "legendFormat": "Total Requests/sec",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(cache_hits_total{job=\"tiered-cache\", tier=\"HOT\"}[1m]))",
+            "legendFormat": "HOT Hits/sec",
+            "refId": "B"
+          },
+          {
+            "expr": "sum(rate(cache_hits_total{job=\"tiered-cache\", tier=\"WARM\"}[1m]))",
+            "legendFormat": "WARM Hits/sec",
+            "refId": "C"
+          },
+          {
+            "expr": "sum(rate(cache_hits_total{job=\"tiered-cache\", tier=\"COLD\"}[1m]))",
+            "legendFormat": "COLD Hits/sec",
+            "refId": "D"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "short",
+            "label": "Requests/sec",
+            "min": 0
+          },
+          {
+            "format": "short"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "legend": {
+          "show": true,
+          "values": true,
+          "current": true
+        },
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "datasource": "Prometheus"
+      },
+      {
+        "id": 8,
+        "title": "Average Cache Latency by Tier",
+        "type": "graph",
+        "gridPos": {
+          "x": 16,
+          "y": 22,
+          "w": 8,
+          "h": 4
+        },
+        "targets": [
+          {
+            "expr": "(sum(rate(cache_latency_seconds_sum{job=\"tiered-cache\", tier=\"HOT\"}[1m])) / sum(rate(cache_latency_seconds_count{job=\"tiered-cache\", tier=\"HOT\"}[1m]))) * 1000",
+            "legendFormat": "HOT Avg",
+            "refId": "A"
+          },
+          {
+            "expr": "(sum(rate(cache_latency_seconds_sum{job=\"tiered-cache\", tier=\"WARM\"}[1m])) / sum(rate(cache_latency_seconds_count{job=\"tiered-cache\", tier=\"WARM\"}[1m]))) * 1000",
+            "legendFormat": "WARM Avg",
+            "refId": "B"
+          },
+          {
+            "expr": "(sum(rate(cache_latency_seconds_sum{job=\"tiered-cache\", tier=\"COLD\"}[1m])) / sum(rate(cache_latency_seconds_count{job=\"tiered-cache\", tier=\"COLD\"}[1m]))) * 1000",
+            "legendFormat": "COLD Avg",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "ms",
+            "label": "Latency",
+            "min": 0
+          },
+          {
+            "format": "short"
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "legend": {
+          "show": true,
+          "values": true,
+          "current": true
+        },
+        "tooltip": {
+          "shared": true,
+          "sort": 0,
+          "value_type": "individual"
+        },
+        "datasource": "Prometheus"
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "symbol",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(cache_requests_total{job=\"tiered-cache\"}, symbol)",
+          "multi": true,
+          "includeAll": true,
+          "refresh": 1,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        },
+        {
+          "name": "data_type",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(cache_requests_total{job=\"tiered-cache\"}, data_type)",
+          "multi": true,
+          "includeAll": true,
+          "refresh": 1,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "ALERTS{alertname=\"CacheHitRateLow\", severity=\"warning\"}",
+          "iconColor": "rgba(255, 96, 96, 1)",
+          "name": "Cache Alerts",
+          "titleFormat": "Cache Alert"
+        }
+      ]
+    }
+  },
+  "overwrite": true
+}

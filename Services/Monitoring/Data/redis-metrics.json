@@ -1,0 +1,10 @@
+{
+  "ts":"2025-11-05T05:25:45Z",
+  "mode":"invoke",
+  "source_version":"monitor_wrapper_v2",
+  "set":{"p50":0,"p95":0,"p99":0,"jitter":0,"count":10000},
+  "xadd":{"p50":0,"p95":0,"p99":0,"jitter":0,"count":2000},
+  "rtt":{"p50":9.79,"p95":10.56,"p99":11.84,"jitter":2.05,"count":1000},
+  "stream_lag":{"enabled":false},
+  "health":{"mem_used_human":"94.01M","clients":13,"ops_per_sec":28777,"redis_8_2":{"peak_memory_time":"2025-11-04 21:05:49","dynamic_hz":"yes","current_hz":"25"}}
+}

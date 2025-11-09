@@ -1,1 +1,0 @@
-../../../../../src/driver/linux_resource/stack_vi_allocator.c

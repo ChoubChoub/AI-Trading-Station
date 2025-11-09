@@ -1,0 +1,47 @@
+[Unit]
+Description=QuestDB Time-Series Database for Crypto Trading
+Documentation=https://questdb.io/docs/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=youssefbahloul
+Group=youssefbahloul
+WorkingDirectory=/home/youssefbahloul/ai-trading-station/Services/QuestDB/data/hot
+
+# Environment variables
+Environment="QDB_PACKAGE=/home/youssefbahloul/ai-trading-station/Services/QuestDB/questdb-9.1.0-rt-linux-x86-64"
+Environment="JAVA_OPTS=-Xms8g -Xmx80g -XX:+UseG1GC -XX:MaxGCPauseMillis=100 -XX:+UseStringDeduplication -XX:+ParallelRefProcEnabled -XX:+UnlockExperimentalVMOptions -XX:G1NewSizePercent=20 -XX:G1ReservePercent=15 -XX:InitiatingHeapOccupancyPercent=35 -XX:+UseNUMA -XX:+AlwaysPreTouch -XX:+UseLargePages -XX:LargePageSizeInBytes=2m -Djava.awt.headless=true"
+
+# Start command - use bundled Java and run in foreground
+ExecStart=/home/youssefbahloul/ai-trading-station/Services/QuestDB/questdb-9.1.0-rt-linux-x86-64/bin/java -Dout=/home/youssefbahloul/ai-trading-station/Services/QuestDB/Config/questdb.conf $JAVA_OPTS -p $QDB_PACKAGE -m io.questdb/io.questdb.ServerMain -d /home/youssefbahloul/ai-trading-station/Services/QuestDB/data/hot
+
+# Stop command (graceful shutdown)
+ExecStop=/bin/kill -SIGTERM $MAINPID
+TimeoutStopSec=30
+
+# Restart policy for 24/7 crypto trading operations
+Restart=always
+RestartSec=10
+
+# Resource limits (critical for HFT - handles high file descriptor requirements)
+LimitNOFILE=1048576
+LimitNPROC=65536
+LimitCORE=infinity
+LimitMEMLOCK=infinity
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/youssefbahloul/ai-trading-station/Services/QuestDB/data
+ReadWritePaths=/home/youssefbahloul/ai-trading-station/Services/QuestDB/logs
+
+# Logging
+StandardOutput=append:/home/youssefbahloul/ai-trading-station/Services/QuestDB/logs/questdb.log
+StandardError=append:/home/youssefbahloul/ai-trading-station/Services/QuestDB/logs/questdb-error.log
+SyslogIdentifier=questdb
+
+[Install]
+WantedBy=multi-user.target

@@ -1,7 +1,0 @@
-#ifndef ONLOAD_BUILD_PROFILE
-#define ONLOAD_BUILD_PROFILE ""
-#endif
-#define ONLOAD_VERSION  "9.0.2.140 "ONLOAD_BUILD_PROFILE
-#define ONLOAD_SHORT_VERSION ONLOAD_VERSION
-#define ONLOAD_PRODUCT "Onload"
-#define ONLOAD_COPYRIGHT "Copyright (c) 2002-2025 Advanced Micro Devices, Inc."

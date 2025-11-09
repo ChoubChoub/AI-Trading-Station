@@ -1,0 +1,169 @@
+{
+  "title": "Market Data - Performance Metrics",
+    "tags": ["market-data", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "refresh": "10s",
+    "templating": {
+      "list": [
+        {
+          "name": "symbol",
+          "label": "Symbol",
+          "type": "query",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus-market-data"
+          },
+          "query": "label_values(ticks_inserted_total, symbol)",
+          "multi": true,
+          "includeAll": true,
+          "allValue": ".*",
+          "refresh": 1
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Write Latency (p50, p99)",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(write_latency_seconds_bucket[1m]))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(write_latency_seconds_bucket[1m]))",
+            "legendFormat": "p99",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth"
+            },
+            "thresholds": {
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 0.001, "color": "yellow"},
+                {"value": 0.010, "color": "red"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Batch Size Distribution",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(batch_size_bucket[1m]))",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(batch_size_bucket[1m]))",
+            "legendFormat": "p95",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth"
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "title": "Processing Rate (Events/sec)",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 8, "w": 24, "h": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(ticks_inserted_total[1m]))",
+            "legendFormat": "Total Throughput",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "ops",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "fillOpacity": 20
+            },
+            "thresholds": {
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 1000, "color": "yellow"},
+                {"value": 5000, "color": "green"}
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 4,
+        "title": "CPU Usage",
+        "type": "timeseries",
+        "gridPos": {"x": 0, "y": 16, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(process_cpu_seconds_total[1m]) * 100",
+            "legendFormat": "{{service}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth"
+            },
+            "max": 200
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Network I/O",
+        "type": "timeseries",
+        "gridPos": {"x": 12, "y": 16, "w": 12, "h": 6},
+        "targets": [
+          {
+            "expr": "rate(network_bytes_received_total[1m])",
+            "legendFormat": "Received",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(network_bytes_sent_total[1m])",
+            "legendFormat": "Sent",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "Bps",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth"
+            }
+          }
+        }
+      }
+    ]
+}

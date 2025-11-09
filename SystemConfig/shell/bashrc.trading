@@ -1,0 +1,48 @@
+# ============================================================================
+# AI Trading Station - Shell Configuration
+# ============================================================================
+# PURPOSE: Trading-specific shell environment configuration
+# USAGE: Append to user's ~/.bashrc or source from ~/.bashrc
+# DEPLOYMENT: Copy to ~/.bashrc.trading and add "source ~/.bashrc.trading"
+# ============================================================================
+
+# Network Interface (used by network tuning scripts)
+export NIC_INTERFACE='enp130s0f0np0'
+
+# Solarflare Onload paths
+export PATH="/opt/onload/bin:$PATH"
+export LD_LIBRARY_PATH="/opt/onload/lib64:$LD_LIBRARY_PATH"
+
+# CUDA paths (for GPU optimization services)
+export PATH=/usr/local/cuda-13.0/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:$LD_LIBRARY_PATH
+
+# Onload Services PATH (makes onload-trading wrapper available system-wide)
+export PATH="$HOME/ai-trading-station/Services/Onload:$PATH"
+
+# Trading Production Mode (set by set-monitoring-mode script)
+export TRADING_PRODUCTION_MODE=false
+
+# ============================================================================
+# Trading Aliases
+# ============================================================================
+
+# Monitoring dashboard launcher
+alias monitordash='TRADING_PRODUCTION_MODE=${TRADING_PRODUCTION_MODE:-false} ONLOAD_NO_TUNE=1 $HOME/ai-trading-station/Services/Onload/onload-trading python3 $HOME/ai-trading-station/Services/Monitoring/Scripts/Runtime/monitor_dashboard_complete.py'
+
+# Monitoring mode toggle
+alias set-monitoring-mode='source ~/ai-trading-station/Services/Monitoring/Scripts/Utility/set_monitoring_mode.sh'
+
+# Quick monitoring mode toggles
+alias trading-mode='set-monitoring-mode trading'
+alias monitor-mode='set-monitoring-mode notrading'
+alias monitoring-status='set-monitoring-mode status'
+
+# ============================================================================
+# Notes
+# ============================================================================
+# 1. NIC_INTERFACE must match your Solarflare network interface name
+# 2. TRADING_PRODUCTION_MODE controls whether monitoring tools affect production
+# 3. Onload wrapper path is hardcoded in monitordash alias - update if moved
+# 4. GITHUB_TOKEN should be stored separately in a secure file, not here
+# ============================================================================

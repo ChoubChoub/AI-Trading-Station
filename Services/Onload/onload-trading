@@ -1,0 +1,105 @@
+#!/bin/bash
+# OnLoad Brain Wrapper - Version 4.0
+# Optimized for ML/Backtesting workloads (no CPU pinning)
+# Brain focuses on signal generation, VPS handles execution
+
+FALLBACK_MODE="${ONLOAD_FALLBACK:-auto}"
+DEBUG_MODE="${ONLOAD_DEBUG:-0}"
+NO_TUNE_MODE="${ONLOAD_NO_TUNE:-0}"
+
+check_onload_version() {
+    if ! command -v onload >/dev/null 2>&1; then
+        echo "❌ Onload not found in PATH" >&2
+        return 1
+    fi
+    local version=$(onload --version 2>&1 | grep -oP 'Onload \\K[0-9.]+' | head -1)
+    if [[ "$DEBUG_MODE" == "1" ]]; then
+        echo "🔍 Detected Onload version: $version"
+    fi
+    if [[ ! "$version" =~ ^9\. ]]; then
+        echo "⚠️  Warning: Onload version $version may have compatibility issues" >&2
+    fi
+    return 0
+}
+
+setup_onload_preload() {
+    if [[ -f /lib/x86_64-linux-gnu/libonload.so ]]; then
+        echo "/lib/x86_64-linux-gnu/libonload.so"
+    elif [[ -f /usr/lib/x86_64-linux-gnu/libonload.so ]]; then
+        echo "/usr/lib/x86_64-linux-gnu/libonload.so"
+    elif [[ -f /usr/lib/libonload.so ]]; then
+        echo "/usr/lib/libonload.so"
+    fi
+}
+
+build_env() {
+    # HFT-Standard Memory Configuration (Huge Pages)
+    echo -n "EF_USE_HUGE_PAGES=2 "          # Strict mode - fail if unavailable
+    echo -n "EF_PACKET_BUFFER_MODE=2 "      # Use huge pages for packet buffers
+    echo -n "EF_MAX_PACKETS=65536 "         # Pre-allocate packet pool
+    echo -n "EF_PREFAULT_PACKETS=1 "        # Pre-fault for deterministic latency
+    
+    # Ultra-Low Latency Polling
+    echo -n "EF_POLL_USEC=0 "
+    echo -n "EF_INT_DRIVEN=0 "
+    echo -n "EF_SPIN_USEC=1000000 "
+    
+    # Enhanced Buffer Sizes for HFT (within hardware limits)
+    echo -n "EF_RXQ_SIZE=4096 "             # Max supported: 4096
+    echo -n "EF_TXQ_SIZE=2048 "             # Max supported: 2048 (hardware limit)
+    
+    # Performance Optimizations
+    echo -n "EF_TX_PUSH=1 "
+    echo -n "EF_CTPIO_MODE=sf-np "
+    echo -n "EF_TCP_SYN_OPTS=3 "
+    if [[ -f /lib/x86_64-linux-gnu/libcitransport0.so ]]; then
+        echo -n "LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH "
+    elif [[ -f /usr/lib/libcitransport0.so ]]; then
+        echo -n "LD_LIBRARY_PATH=/usr/lib:$LD_LIBRARY_PATH "
+    fi
+    local preload
+    preload=$(setup_onload_preload)
+    if [[ -n "$preload" ]]; then
+        echo -n "LD_PRELOAD=$preload$LD_PRELOAD "
+    fi
+}
+
+irq_isolation() {
+    if [[ "$NO_TUNE_MODE" == "1" ]]; then
+        if [[ "$DEBUG_MODE" == "1" ]]; then
+            echo "🔇 Skipping IRQ isolation (ONLOAD_NO_TUNE=1)"
+        fi
+        return 0
+    fi
+    
+    echo "🔒 Isolating IRQs: moving all IRQs to CPU 0 (away from trading cores $TRADING_CORES)"
+    for irq in /proc/irq/*/smp_affinity; do
+        if [[ -w "$irq" ]]; then
+            echo 1 > "$irq" 2>/dev/null || true
+        fi
+    done
+    echo "✅ IRQ isolation complete."
+}
+
+
+
+echo "🚀 OnLoad Brain Wrapper v4.0 - ChoubChoub AI Trading Station"
+echo "Date: $(date -u)"
+echo "Mode: Brain (Signal Generation & Backtesting - No CPU Pinning)"
+if [[ "$NO_TUNE_MODE" == "1" ]]; then
+    echo "Mode: No-tune (OnLoad only, preserve IRQ settings)"
+fi
+
+if ! check_onload_version; then
+    echo "❌ Onload not properly installed. Aborting." >&2
+    exit 1
+fi
+
+# Brain architecture: No CPU pinning for flexibility
+# Let Linux CFS (Completely Fair Scheduler) optimize core usage
+if [[ "$DEBUG_MODE" == "1" ]]; then
+    echo "✅ Brain mode: No CPU pinning (flexible scheduling)"
+    echo "🔧 Launching with Onload: onload $@"
+fi
+irq_isolation
+eval $(build_env) exec onload "$@"

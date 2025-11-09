@@ -1,0 +1,46 @@
+[Unit]
+Description=Redis to QuestDB Batch Writer (Multi-Stream)
+Documentation=file:///home/youssefbahloul/ai-trading-station/Services/QuestDB/docs/DAY3_PHASE2_COMPLETION_REPORT.md
+After=network.target redis-hft.service questdb.service binance-trades.service binance-bookticker.service
+Requires=redis-hft.service questdb.service
+Wants=binance-trades.service binance-bookticker.service
+PartOf=market-data.target
+
+[Service]
+Type=simple
+User=youssefbahloul
+Group=youssefbahloul
+WorkingDirectory=/home/youssefbahloul/ai-trading-station/Services/QuestDB/Runtime
+ExecStart=/home/youssefbahloul/ai-trading-station/Services/Onload/onload-trading python3 /home/youssefbahloul/ai-trading-station/Services/QuestDB/Runtime/redis_to_questdb_v2.py
+
+# Restart policy
+Restart=always
+RestartSec=5s
+StartLimitInterval=0
+
+# Resource limits
+MemoryMax=2G
+CPUQuota=200%
+
+# Graceful shutdown (shutdown_event handled by Python script)
+TimeoutStopSec=60s
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=batch-writer
+
+# Security hardening
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/tmp
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=market-data.target multi-user.target

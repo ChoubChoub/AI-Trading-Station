@@ -1,0 +1,2 @@
+0 2 * * * /home/youssefbahloul/ai-trading-station/Services/QuestDB/Utility/retention-cleanup.sh >> /home/youssefbahloul/ai-trading-station/Services/QuestDB/logs/retention-cron.log 2>&1
+*/5 * * * * /home/youssefbahloul/ai-trading-station/Services/Monitoring/Scripts/Runtime/check_questdb_health.sh >> /home/youssefbahloul/ai-trading-station/Services/Monitoring/logs/health-check-cron.log 2>&1

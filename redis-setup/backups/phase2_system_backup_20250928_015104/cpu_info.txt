@@ -1,6 +1,0 @@
-=== CPU 2 information ===
-CPU 2 online: 1
-=== CPU 3 information ===
-CPU 3 online: 1
-=== CPU 4 information ===
-CPU 4 online: 1

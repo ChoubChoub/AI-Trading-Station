@@ -1,0 +1,4 @@
+# Udev rule to run IRQ affinity script when network interfaces come up
+# This ensures IRQ isolation is maintained even if drivers reassign IRQs
+
+SUBSYSTEM=="net", ACTION=="add", KERNEL=="enp130s0f*", RUN+="/bin/bash /home/youssefbahloul/ai-trading-station/Tuning/Network/configure-nic-irq-affinity.sh"

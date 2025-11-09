@@ -1,0 +1,45 @@
+[Unit]
+Description=Binance OrderBook (BookTicker) Stream Collector
+Documentation=file:///home/youssefbahloul/ai-trading-station/Services/QuestDB/docs/DAY3_PHASE2_COMPLETION_REPORT.md
+After=network.target redis-hft.service
+Requires=redis-hft.service
+PartOf=market-data.target
+
+[Service]
+Type=simple
+User=youssefbahloul
+Group=youssefbahloul
+WorkingDirectory=/home/youssefbahloul/ai-trading-station/Services/QuestDB/Runtime
+ExecStart=/home/youssefbahloul/ai-trading-station/Services/Onload/onload-trading python3 /home/youssefbahloul/ai-trading-station/Services/QuestDB/Runtime/binance_bookticker_collector.py
+
+# Restart policy
+Restart=always
+RestartSec=5s
+StartLimitInterval=0
+
+# Resource limits
+MemoryMax=500M
+CPUQuota=50%
+
+# Graceful shutdown
+TimeoutStopSec=30s
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=binance-bookticker
+
+# Security hardening
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/tmp
+
+# Environment
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=market-data.target multi-user.target

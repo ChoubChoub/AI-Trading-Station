@@ -1,1 +1,0 @@
-../../../../../src/lib/citools/get_cpu_khz.c

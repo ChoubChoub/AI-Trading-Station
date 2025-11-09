@@ -1,6 +1,0 @@
-[2025-09-28 06:38:40] === Redis HFT Performance Gate vperf_gate_v1.0 ===
-[2025-09-28 06:38:40] Mode: Bootstrap=false, SoftFail=false, MetricsOnly=true, FingerprintOnly=false
-[2025-09-28 06:38:40] --- Performance Gate Check ---
-[2025-09-28 06:38:40] Performance: PASS
-[2025-09-28 06:38:40] --- Final Gate Decision ---
-[2025-09-28 06:38:40] ✅ GATE: PASS - System ready for institutional-grade trading

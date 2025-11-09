@@ -1,0 +1,14 @@
+[Unit]
+Description=Graceful Market Data Shutdown
+Documentation=file:///home/youssefbahloul/ai-trading-station/Documentation/QUESTDB_WAL_CORRUPTION_INCIDENT_REPORT.md
+DefaultDependencies=no
+Before=shutdown.target reboot.target halt.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/youssefbahloul/ai-trading-station/Services/System/shutdown-market-data.sh
+TimeoutStartSec=30
+RemainAfterExit=yes
+
+[Install]
+WantedBy=shutdown.target reboot.target halt.target

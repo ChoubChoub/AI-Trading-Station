@@ -1,0 +1,88 @@
+{
+  "overall_status": "ULTRA_LOW_LATENCY_PASS",
+  "interface": "enp130s0f0",
+  "checks": {
+    "services": {
+      "services": {},
+      "failures": [],
+      "warnings": []
+    },
+    "adaptive_coalescing": {
+      "status": "ok",
+      "value": "off",
+      "failures": [],
+      "warnings": []
+    },
+    "xps_configuration": {
+      "status": "ok",
+      "queues": {
+        "tx-0": {
+          "current": "0c",
+          "expected": "0c",
+          "correct": true
+        },
+        "tx-1": {
+          "current": "0c",
+          "expected": "0c",
+          "correct": true
+        },
+        "tx-2": {
+          "current": "0c",
+          "expected": "0c",
+          "correct": true
+        },
+        "tx-3": {
+          "current": "0c",
+          "expected": "0c",
+          "correct": true
+        },
+        "tx-4": {
+          "current": "0c",
+          "expected": "0c",
+          "correct": true
+        },
+        "tx-5": {
+          "current": "0c",
+          "expected": "0c",
+          "correct": true
+        },
+        "tx-6": {
+          "current": "0c",
+          "expected": "0c",
+          "correct": true
+        },
+        "tx-7": {
+          "current": "0c",
+          "expected": "0c",
+          "correct": true
+        }
+      },
+      "failures": [],
+      "warnings": []
+    },
+    "ring_buffers": {
+      "status": "ok",
+      "rx": 2048,
+      "tx": 2048,
+      "failures": [],
+      "warnings": []
+    },
+    "rps_configuration": {
+      "status": "ok",
+      "value": "00",
+      "failures": [],
+      "warnings": []
+    },
+    "irq_violations": {
+      "status": "ok",
+      "violations": [],
+      "failures": [],
+      "warnings": []
+    }
+  },
+  "summary": {
+    "failures": [],
+    "warnings": [],
+    "total_checks": 6
+  }
+}

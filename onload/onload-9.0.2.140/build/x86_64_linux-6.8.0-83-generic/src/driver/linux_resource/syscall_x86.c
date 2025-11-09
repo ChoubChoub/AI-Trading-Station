@@ -1,1 +1,0 @@
-../../../../../src/driver/linux_resource/syscall_x86.c

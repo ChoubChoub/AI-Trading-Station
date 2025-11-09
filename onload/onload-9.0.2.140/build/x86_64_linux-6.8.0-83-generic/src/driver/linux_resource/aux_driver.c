@@ -1,1 +1,0 @@
-../../../../../src/driver/linux_resource/aux_driver.c

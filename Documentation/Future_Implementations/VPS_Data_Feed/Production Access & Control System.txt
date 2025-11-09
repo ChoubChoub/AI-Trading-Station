@@ -1,0 +1,2675 @@
+# Unified Production Access & Control System for aistation.trading
+
+## 🎯 **Executive Summary**
+
+Based on your requirements and Sonnet's operational controls proposal, I recommend a **unified three-tier architecture**:
+
+1. **Monitoring Layer**: Grafana (read-only dashboards)
+2. **Control Layer**: Custom FastAPI dashboard (operational controls)
+3. **Infrastructure Layer**: NanoKVM API integration (power management)
+
+All protected by **Authelia 2FA** with single sign-on across all services.
+
+## 🏗️ **Recommended Architecture**
+
+```
+Internet → aistation.trading (Domain)
+    ↓
+Nginx Reverse Proxy (Port 443)
+    ↓
+Authelia (2FA + SSO)
+    ├── grafana.aistation.trading    → Grafana (monitoring)
+    ├── ops.aistation.trading        → Control Dashboard (operations)
+    └── power.aistation.trading      → NanoKVM API Bridge (power control)
+```
+
+## 📊 **Review of Sonnet's Proposals**
+
+### **Option 1: Grafana Plugins** ❌ **REJECT**
+- **Reasoning**: Grafana is not designed for control operations. Using it for operational controls violates separation of concerns and creates security risks.
+
+### **Option 2: Custom Control Dashboard** ✅ **RETAIN WITH MODIFICATIONS**
+- **Recommendation**: Excellent foundation. Integrate with Authelia for SSO instead of separate JWT auth.
+- **Modifications**: 
+  - Use same 2FA system as Grafana (Authelia)
+  - Add NanoKVM API integration
+  - Enhanced audit logging with immutable storage
+
+### **Option 3: Telegram Bot** ✅ **RETAIN AS BACKUP**
+- **Recommendation**: Excellent emergency access method when web interface unavailable
+- **Use Case**: Out-of-band management, emergency kill switch from mobile
+- **Integration**: Log all Telegram actions to same audit system
+
+## 🔧 **Detailed Implementation Plan**
+
+### **Phase 1: Core Infrastructure (Day 1)**
+
+#### **1.1 Domain & DNS Setup**
+```bash
+# DNS Records for aistation.trading
+A     @         YOUR_SERVER_IP
+A     grafana   YOUR_SERVER_IP
+A     ops       YOUR_SERVER_IP
+A     power     YOUR_SERVER_IP
+A     auth      YOUR_SERVER_IP
+```
+
+#### **1.2 Authelia 2FA Setup**
+```yaml
+# /etc/authelia/configuration.yml
+server:
+  host: 0.0.0.0
+  port: 9091
+
+# 2FA Configuration
+totp:
+  issuer: AI Trading Station
+  period: 30
+  skew: 1
+  algorithm: SHA256
+  digits: 6
+
+# WebAuthn for hardware keys (optional)
+webauthn:
+  disable: false
+  display_name: AI Trading Station
+  attestation_conveyance_preference: indirect
+  user_verification: preferred
+
+# Access Control Rules
+access_control:
+  default_policy: deny
+  rules:
+    # Grafana - read-only monitoring
+    - domain: grafana.aistation.trading
+      policy: two_factor
+      subject: 
+        - "group:operators"
+        - "group:admins"
+    
+    # Operations Dashboard - control access
+    - domain: ops.aistation.trading
+      policy: two_factor
+      subject:
+        - "group:admins"  # Only admins can control
+    
+    # Power control - highest security
+    - domain: power.aistation.trading
+      policy: two_factor
+      subject:
+        - "user:youssef"  # Only specific user
+      networks:
+        - 192.168.1.0/24  # Only from local network
+
+# Session configuration
+session:
+  name: authelia_session
+  secret: [GENERATE_64_CHAR_SECRET]
+  expiration: 1h
+  inactivity: 15m
+  remember_me_duration: 7d
+
+# Regulation (brute force protection)
+regulation:
+  max_retries: 3
+  find_time: 2m
+  ban_time: 10m
+
+# Storage for users and sessions
+storage:
+  encryption_key: [GENERATE_KEY]
+  postgres:
+    host: localhost
+    port: 5432
+    database: authelia
+    username: authelia
+    password: [SECURE_PASSWORD]
+
+# Notification for 2FA setup
+notifier:
+  smtp:
+    host: smtp.gmail.com
+    port: 587
+    username: alerts@aistation.trading
+    password: [APP_PASSWORD]
+    sender: "AI Trading Station <alerts@aistation.trading>"
+```
+
+### **Phase 2: Control Dashboard Implementation (Day 2)**
+
+#### **2.1 Enhanced FastAPI Backend**
+
+**Directory Structure**:
+```
+/home/youssefbahloul/ai-trading-station/ControlPanel/
+├── api/
+│   ├── main.py              # FastAPI app
+│   ├── auth.py              # Authelia integration
+│   ├── controls.py          # Control endpoints
+│   ├── nanokvm.py          # NanoKVM API integration
+│   ├── audit.py            # Immutable audit logging
+│   └── models.py           # Pydantic models
+├── frontend/
+│   ├── index.html
+│   ├── dashboard.js
+│   └── styles.css
+└── config.yaml
+```
+
+**main.py** (Enhanced with all controls):
+```python
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+import subprocess
+import aiohttp
+import asyncio
+from datetime import datetime
+import hashlib
+import hmac
+
+app = FastAPI(title="AI Trading Station Control Panel")
+
+# Authelia integration - verify user from headers
+async def verify_authelia_user(request: Request):
+    """Extract and verify user from Authelia headers"""
+    user = request.headers.get("Remote-User")
+    groups = request.headers.get("Remote-Groups", "").split(",")
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    if "admins" not in groups:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    return {"username": user, "groups": groups}
+
+# Audit logging with blockchain-style immutability
+class AuditLogger:
+    def __init__(self):
+        self.chain = []
+        
+    def log(self, user: str, action: str, target: str, result: str, details: dict = None):
+        """Create immutable audit log entry"""
+        entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "user": user,
+            "action": action,
+            "target": target,
+            "result": result,
+            "details": details or {},
+            "previous_hash": self.chain[-1]["hash"] if self.chain else "0"
+        }
+        
+        # Create hash of this entry
+        entry_str = json.dumps(entry, sort_keys=True)
+        entry["hash"] = hashlib.sha256(entry_str.encode()).hexdigest()
+        
+        self.chain.append(entry)
+        
+        # Also write to persistent storage
+        with open("/var/log/trading/audit.jsonl", "a") as f:
+            f.write(json.dumps(entry) + "\n")
+        
+        # Send to remote syslog for compliance
+        self._send_to_syslog(entry)
+        
+        return entry
+
+audit = AuditLogger()
+
+# ==================== KILL SWITCH ====================
+@app.post("/api/kill-switch")
+async def emergency_kill_switch(
+    confirmation: str,
+    user_data = Depends(verify_authelia_user)
+):
+    """EMERGENCY: Stop all trading activity immediately"""
+    
+    if confirmation != "CONFIRM_EMERGENCY_STOP":
+        raise HTTPException(400, "Invalid confirmation")
+    
+    try:
+        # 1. Stop all trading services
+        services_to_kill = [
+            "binance-trades",
+            "binance-bookticker", 
+            "batch-writer",
+            "trading-engine"  # If exists
+        ]
+        
+        results = []
+        for service in services_to_kill:
+            result = subprocess.run(
+                ["sudo", "systemctl", "stop", service],
+                capture_output=True,
+                timeout=5
+            )
+            results.append({
+                "service": service,
+                "stopped": result.returncode == 0
+            })
+        
+        # 2. Flush Redis to prevent stale data
+        subprocess.run(["redis-cli", "FLUSHALL"], timeout=2)
+        
+        # 3. Log critical event
+        audit.log(
+            user=user_data["username"],
+            action="KILL_SWITCH_ACTIVATED",
+            target="all_trading_services",
+            result="SUCCESS",
+            details={"services_stopped": results}
+        )
+        
+        # 4. Send emergency notifications
+        await send_emergency_alert(
+            f"🚨 KILL SWITCH activated by {user_data['username']}"
+        )
+        
+        return {
+            "status": "emergency_stop_complete",
+            "services_stopped": len([r for r in results if r["stopped"]]),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        audit.log(user_data["username"], "KILL_SWITCH_FAILED", "system", str(e))
+        raise HTTPException(500, f"Kill switch failed: {str(e)}")
+
+# ==================== DATA FEED CONTROL ====================
+@app.post("/api/datafeed/{action}")
+async def control_datafeed(
+    action: str,
+    user_data = Depends(verify_authelia_user)
+):
+    """Control market data collection"""
+    
+    if action not in ["start", "stop", "restart", "status"]:
+        raise HTTPException(400, "Invalid action")
+    
+    # Use the datafeed command
+    result = subprocess.run(
+        ["datafeed", action],
+        capture_output=True,
+        text=True,
+        timeout=10
+    )
+    
+    audit.log(
+        user=user_data["username"],
+        action=f"DATAFEED_{action.upper()}",
+        target="market_data_collectors",
+        result="SUCCESS" if result.returncode == 0 else "FAILED",
+        details={"output": result.stdout}
+    )
+    
+    return {
+        "action": action,
+        "success": result.returncode == 0,
+        "output": result.stdout
+    }
+
+# ==================== NANOKVM POWER CONTROL ====================
+class NanoKVMController:
+    """Integration with NanoKVM for remote power management"""
+    
+    def __init__(self):
+        self.base_url = "https://210.6.8.5:40443"
+        self.auth_token = None
+        
+    async def authenticate(self, username: str, password: str):
+        """Authenticate with NanoKVM API"""
+        async with aiohttp.ClientSession() as session:
+            # Note: SSL verification disabled for self-signed cert
+            async with session.post(
+                f"{self.base_url}/api/auth/login",
+                json={"username": username, "password": password},
+                ssl=False
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    self.auth_token = data.get("token")
+                    return True
+        return False
+    
+    async def power_status(self):
+        """Get current power status"""
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{self.base_url}/api/power/status",
+                headers={"Authorization": f"Bearer {self.auth_token}"},
+                ssl=False
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.json()
+        return None
+    
+    async def power_on(self):
+        """Power on the machine"""
+        return await self._power_action("on")
+    
+    async def power_off(self):
+        """Graceful power off"""
+        return await self._power_action("off")
+    
+    async def power_reset(self):
+        """Force reset (use with caution)"""
+        return await self._power_action("reset")
+    
+    async def _power_action(self, action: str):
+        """Execute power action"""
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{self.base_url}/api/power/{action}",
+                headers={"Authorization": f"Bearer {self.auth_token}"},
+                ssl=False
+            ) as resp:
+                return resp.status == 200
+
+nanokvm = NanoKVMController()
+
+@app.post("/api/power/{action}")
+async def control_power(
+    action: str,
+    confirmation: str,
+    user_data = Depends(verify_authelia_user)
+):
+    """Control machine power via NanoKVM"""
+    
+    # Extra security for power control
+    if user_data["username"] != "youssef":
+        raise HTTPException(403, "Power control restricted to primary admin")
+    
+    if action not in ["on", "off", "status"]:
+        raise HTTPException(400, "Invalid power action")
+    
+    if action in ["off"] and confirmation != "CONFIRM_POWER_OFF":
+        raise HTTPException(400, "Confirmation required for power off")
+    
+    try:
+        # Authenticate with NanoKVM
+        if not nanokvm.auth_token:
+            success = await nanokvm.authenticate(
+                username="admin",  # From env var
+                password="nanokvm_password"  # From env var
+            )
+            if not success:
+                raise HTTPException(500, "NanoKVM authentication failed")
+        
+        # Execute power action
+        if action == "status":
+            result = await nanokvm.power_status()
+        elif action == "on":
+            result = await nanokvm.power_on()
+        elif action == "off":
+            # Graceful shutdown sequence first
+            subprocess.run(["datafeed", "stop"], timeout=10)
+            await asyncio.sleep(5)
+            result = await nanokvm.power_off()
+        
+        audit.log(
+            user=user_data["username"],
+            action=f"POWER_{action.upper()}",
+            target="trading_machine",
+            result="SUCCESS" if result else "FAILED"
+        )
+        
+        return {"action": action, "success": bool(result)}
+        
+    except Exception as e:
+        audit.log(
+            user=user_data["username"],
+            action=f"POWER_{action.upper()}_FAILED",
+            target="trading_machine",
+            result="ERROR",
+            details={"error": str(e)}
+        )
+        raise HTTPException(500, str(e))
+
+# ==================== SERVICE MANAGEMENT ====================
+@app.post("/api/service/{service_name}/{action}")
+async def manage_service(
+    service_name: str,
+    action: str,
+    user_data = Depends(verify_authelia_user)
+):
+    """Manage individual system services"""
+    
+    allowed_services = {
+        "redis": "redis-hft",
+        "questdb": "questdb",
+        "prometheus": "prometheus",
+        "grafana": "grafana-server",
+        "trades": "binance-trades",
+        "orderbook": "binance-bookticker",
+        "writer": "batch-writer"
+    }
+    
+    if service_name not in allowed_services:
+        raise HTTPException(400, "Service not allowed")
+    
+    if action not in ["start", "stop", "restart", "status"]:
+        raise HTTPException(400, "Invalid action")
+    
+    actual_service = allowed_services[service_name]
+    
+    result = subprocess.run(
+        ["sudo", "systemctl", action, actual_service],
+        capture_output=True,
+        text=True,
+        timeout=10
+    )
+    
+    audit.log(
+        user=user_data["username"],
+        action=f"SERVICE_{action.upper()}",
+        target=actual_service,
+        result="SUCCESS" if result.returncode == 0 else "FAILED"
+    )
+    
+    return {
+        "service": service_name,
+        "action": action,
+        "success": result.returncode == 0,
+        "output": result.stdout
+    }
+
+# ==================== SYSTEM STATUS ====================
+@app.get("/api/status/overview")
+async def get_system_status(user_data = Depends(verify_authelia_user)):
+    """Get comprehensive system status"""
+    
+    status = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "services": {},
+        "metrics": {},
+        "power": {}
+    }
+    
+    # Check all services
+    services = [
+        "redis-hft", "questdb", "binance-trades",
+        "binance-bookticker", "batch-writer",
+        "prometheus", "grafana-server"
+    ]
+    
+    for service in services:
+        result = subprocess.run(
+            ["systemctl", "is-active", service],
+            capture_output=True,
+            text=True
+        )
+        status["services"][service] = result.stdout.strip()
+    
+    # Get power status from NanoKVM
+    try:
+        if nanokvm.auth_token or await nanokvm.authenticate("admin", "password"):
+            power_status = await nanokvm.power_status()
+            status["power"] = power_status or {"status": "unknown"}
+    except:
+        status["power"] = {"status": "unavailable"}
+    
+    # Get key metrics from Redis
+    try:
+        import redis
+        r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+        status["metrics"]["redis_connected"] = r.ping()
+        status["metrics"]["stream_lengths"] = {
+            "trades": r.xlen("market:binance_spot:trades:BTCUSDT"),
+            "orderbook": r.xlen("market:binance_spot:orderbook:BTCUSDT")
+        }
+    except:
+        status["metrics"]["redis_connected"] = False
+    
+    return status
+
+# ==================== AUDIT LOG RETRIEVAL ====================
+@app.get("/api/audit/logs")
+async def get_audit_logs(
+    limit: int = 100,
+    user_data = Depends(verify_authelia_user)
+):
+    """Retrieve audit log with integrity verification"""
+    
+    logs = []
+    with open("/var/log/trading/audit.jsonl", "r") as f:
+        for line in f.readlines()[-limit:]:
+            logs.append(json.loads(line))
+    
+    # Verify chain integrity
+    valid_chain = True
+    for i in range(1, len(logs)):
+        expected_prev = logs[i-1]["hash"]
+        actual_prev = logs[i]["previous_hash"]
+        if expected_prev != actual_prev:
+            valid_chain = False
+            break
+    
+    return {
+        "logs": logs,
+        "chain_valid": valid_chain,
+        "count": len(logs)
+    }
+
+# Static files for frontend
+app.mount("/", StaticFiles(directory="frontend", html=True))
+```
+
+#### **2.2 Frontend Dashboard**
+
+**Enhanced Control Panel UI** (`frontend/index.html`):
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Trading Station - Control Panel</title>
+    <style>
+        :root {
+            --primary: #1a73e8;
+            --danger: #dc3545;
+            --success: #28a745;
+            --warning: #ffc107;
+            --dark: #1a1a2e;
+            --card: #16213e;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--dark);
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container { max-width: 1400px; margin: 0 auto; }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: var(--card);
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+        
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+        }
+        
+        .card {
+            background: var(--card);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .card h2 {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .emergency {
+            border: 2px solid var(--danger);
+            background: rgba(220, 53, 69, 0.1);
+        }
+        
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .btn-danger:hover { background: #c82333; }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        
+        .kill-switch {
+            width: 100%;
+            padding: 20px;
+            font-size: 18px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #dc3545, #c82333);
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+        }
+        
+        .kill-switch:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(220, 53, 69, 0.6);
+        }
+        
+        .service-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            margin: 10px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+        }
+        
+        .status-active { color: #28a745; }
+        .status-inactive { color: #dc3545; }
+        
+        .power-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .audit-log {
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 6px;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: var(--card);
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .modal h3 { margin-bottom: 20px; }
+        
+        .modal input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div>
+                <h1>🚀 AI Trading Station - Control Panel</h1>
+                <p>User: <span id="username">Loading...</span> | System: <span id="system-status">Checking...</span></p>
+            </div>
+            <div>
+                <button onclick="window.open('https://grafana.aistation.trading', '_blank')" class="btn-primary">
+                    📊 Open Grafana
+                </button>
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- Emergency Controls -->
+            <div class="card emergency">
+                <h2>🚨 Emergency Controls</h2>
+                <button class="kill-switch" onclick="confirmKillSwitch()">
+                    🛑 KILL SWITCH - STOP ALL TRADING
+                </button>
+                <p style="margin-top: 10px; opacity: 0.7;">
+                    Immediately stops all trading activity. Requires confirmation.
+                </p>
+            </div>
+
+            <!-- Power Management -->
+            <div class="card">
+                <h2>⚡ Power Management (NanoKVM)</h2>
+                <div id="power-status">
+                    <p>Status: <span id="power-state">Checking...</span></p>
+                </div>
+                <div class="power-controls">
+                    <button class="btn-success" onclick="powerAction('on')">
+                        Power ON
+                    </button>
+                    <button class="btn-danger" onclick="confirmPowerOff()">
+                        Power OFF
+                    </button>
+                    <button class="btn-primary" onclick="powerAction('status')">
+                        Check Status
+                    </button>
+                </div>
+            </div>
+
+            <!-- Data Feed Control -->
+            <div class="card">
+                <h2>📊 Data Feed Control</h2>
+                <div id="datafeed-status">
+                    <p>Status: <span id="feed-state">Checking...</span></p>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button class="btn-success" onclick="datafeedAction('start')">
+                        ▶️ Start Feed
+                    </button>
+                    <button class="btn-danger" onclick="datafeedAction('stop')">
+                        ⏸️ Stop Feed
+                    </button>
+                    <button class="btn-primary" onclick="datafeedAction('restart')">
+                        🔄 Restart
+                    </button>
+                </div>
+            </div>
+
+            <!-- Service Management -->
+            <div class="card">
+                <h2>⚙️ Service Management</h2>
+                <div id="services-list">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- System Overview -->
+            <div class="card">
+                <h2>📈 System Metrics</h2>
+                <div id="system-metrics">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Audit Log -->
+            <div class="card" style="grid-column: span 2;">
+                <h2>📜 Audit Log (Recent Activity)</h2>
+                <div class="audit-log" id="audit-log">
+                    Loading...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modals -->
+    <div id="kill-modal" class="modal">
+        <div class="modal-content">
+            <h3>⚠️ Confirm Kill Switch</h3>
+            <p>This will immediately stop ALL trading activity.</p>
+            <p>Type <strong>CONFIRM_EMERGENCY_STOP</strong> to proceed:</p>
+            <input type="text" id="kill-confirmation" placeholder="Enter confirmation">
+            <div style="margin-top: 20px;">
+                <button class="btn-danger" onclick="executeKillSwitch()">Execute</button>
+                <button class="btn-primary" onclick="closeModal('kill-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="power-modal" class="modal">
+        <div class="modal-content">
+            <h3>⚠️ Confirm Power Off</h3>
+            <p>This will shut down the trading machine.</p>
+            <p>Type <strong>CONFIRM_POWER_OFF</strong> to proceed:</p>
+            <input type="text" id="power-confirmation" placeholder="Enter confirmation">
+            <div style="margin-top: 20px;">
+                <button class="btn-danger" onclick="executePowerOff()">Shutdown</button>
+                <button class="btn-primary" onclick="closeModal('power-modal')">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+
+        // Fetch wrapper that includes auth headers from Authelia
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'same-origin'  // Include cookies
+            };
+            
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+            
+            const response = await fetch(`${API_BASE}${endpoint}`, options);
+            
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(error);
+            }
+            
+            return await response.json();
+        }
+
+        // Kill Switch functions
+        function confirmKillSwitch() {
+            document.getElementById('kill-modal').style.display = 'flex';
+        }
+
+        async function executeKillSwitch() {
+            const confirmation = document.getElementById('kill-confirmation').value;
+            
+            try {
+                const result = await apiCall('/kill-switch', 'POST', {
+                    confirmation: confirmation
+                });
+                
+                alert('✅ Kill switch activated! All trading stopped.');
+                closeModal('kill-modal');
+                loadAuditLog();
+                loadSystemStatus();
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        }
+
+        // Power control functions
+        function confirmPowerOff() {
+            document.getElementById('power-modal').style.display = 'flex';
+        }
+
+        async function executePowerOff() {
+            const confirmation = document.getElementById('power-confirmation').value;
+            
+            try {
+                const result = await apiCall('/power/off', 'POST', {
+                    confirmation: confirmation
+                });
+                
+                alert('⚠️ Machine shutting down...');
+                closeModal('power-modal');
+                loadAuditLog();
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        }
+
+        async function powerAction(action) {
+            try {
+                const body = action === 'off' 
+                    ? { confirmation: 'CONFIRM_POWER_OFF' }
+                    : {};
+                    
+                const result = await apiCall(`/power/${action}`, 'POST', body);
+                
+                alert(`✅ Power ${action} successful`);
+                loadPowerStatus();
+                loadAuditLog();
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        }
+
+        // Data feed control
+        async function datafeedAction(action) {
+            try {
+                const result = await apiCall(`/datafeed/${action}`, 'POST');
+                alert(`✅ Datafeed ${action} successful`);
+                loadSystemStatus();
+                loadAuditLog();
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        }
+
+        // Service control
+        async function serviceAction(service, action) {
+            try {
+                const result = await apiCall(`/service/${service}/${action}`, 'POST');
+                alert(`✅ ${service} ${action} successful`);
+                loadServices();
+                loadAuditLog();
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        }
+
+        // Load functions
+        async function loadSystemStatus() {
+            try {
+                const status = await apiCall('/status/overview');
+                
+                // Update system status
+                const activeServices = Object.values(status.services)
+                    .filter(s => s === 'active').length;
+                const totalServices = Object.keys(status.services).length;
+                
+                document.getElementById('system-status').innerHTML = 
+                    `🟢 ${activeServices}/${totalServices} Services Active`;
+                
+                // Update metrics
+                const metricsHtml = `
+                    <p>Redis: ${status.metrics.redis_connected ? '🟢 Connected' : '🔴 Disconnected'}</p>
+                    <p>Trade Stream: ${status.metrics.stream_lengths?.trades || 0} messages</p>
+                    <p>OrderBook Stream: ${status.metrics.stream_lengths?.orderbook || 0} messages</p>
+                `;
+                document.getElementById('system-metrics').innerHTML = metricsHtml;
+                
+                // Update power status
+                const powerState = status.power?.status || 'unknown';
+                document.getElementById('power-state').innerHTML = 
+                    powerState === 'on' ? '🟢 Powered On' : '🔴 ' + powerState;
+                
+                // Update feed status
+                const feedActive = status.services['binance-trades'] === 'active';
+                document.getElementById('feed-state').innerHTML = 
+                    feedActive ? '🟢 Active' : '🔴 Stopped';
+                
+            } catch (error) {
+                console.error('Failed to load status:', error);
+            }
+        }
+
+        async function loadServices() {
+            try {
+                const status = await apiCall('/status/overview');
+                const services = status.services;
+                
+                const container = document.getElementById('services-list');
+                container.innerHTML = '';
+                
+                const serviceMap = {
+                    'redis-hft': 'Redis',
+                    'questdb': 'QuestDB',
+                    'binance-trades': 'Trades',
+                    'binance-bookticker': 'OrderBook',
+                    'batch-writer': 'Writer',
+                    'prometheus': 'Prometheus',
+                    'grafana-server': 'Grafana'
+                };
+                
+                for (const [service, state] of Object.entries(services)) {
+                    const name = serviceMap[service] || service;
+                    const isActive = state === 'active';
+                    
+                    container.innerHTML += `
+                        <div class="service-row">
+                            <span>${name}: ${isActive ? '🟢 Running' : '🔴 Stopped'}</span>
+                            <div>
+                                ${isActive 
+                                    ? `<button onclick="serviceAction('${name.toLowerCase()}', 'stop')" style="background: #dc3545; color: white; padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer;">Stop</button>`
+                                    : `<button onclick="serviceAction('${name.toLowerCase()}', 'start')" style="background: #28a745; color: white; padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer;">Start</button>`
+                                }
+                                <button onclick="serviceAction('${name.toLowerCase()}', 'restart')" style="background: #1a73e8; color: white; padding: 5px 10px; border: none; border-radius: 4px; cursor: pointer;">Restart</button>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Failed to load services:', error);
+            }
+        }
+
+        async function loadAuditLog() {
+            try {
+                const result = await apiCall('/audit/logs?limit=20');
+                const logs = result.logs;
+                
+                const container = document.getElementById('audit-log');
+                container.innerHTML = logs.map(log => 
+                    `${log.timestamp} | ${log.user.padEnd(10)} | ${log.action.padEnd(25)} | ${log.target.padEnd(20)} | ${log.result}`
+                ).join('\n');
+                
+                if (!result.chain_valid) {
+                    container.innerHTML = '⚠️ AUDIT LOG INTEGRITY VIOLATION DETECTED\n' + container.innerHTML;
+                }
+            } catch (error) {
+                console.error('Failed to load audit log:', error);
+            }
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            loadSystemStatus();
+            loadServices();
+            loadAuditLog();
+            
+            // Auto-refresh every 5 seconds
+            setInterval(() => {
+                loadSystemStatus();
+                loadServices();
+            }, 5000);
+            
+            // Refresh audit log every 10 seconds
+            setInterval(loadAuditLog, 10000);
+        });
+    </script>
+</body>
+</html>
+```
+
+### **Phase 3: Telegram Bot Backup (Day 2 - Optional)**
+
+**telegram_bot.py** (Emergency backup access):
+```python
+import os
+import subprocess
+import logging
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
+import hashlib
+import hmac
+from datetime import datetime
+
+# Configuration
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+AUTHORIZED_USERS = [123456789]  # Your Telegram user ID
+AUDIT_WEBHOOK = "https://ops.aistation.trading/api/audit/telegram"
+
+class TradingControlBot:
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        
+    def is_authorized(self, user_id: int) -> bool:
+        return user_id in AUTHORIZED_USERS
+    
+    def log_action(self, user: str, action: str, result: str):
+        """Log to audit system"""
+        try:
+            # Send to main audit system
+            import requests
+            requests.post(AUDIT_WEBHOOK, json={
+                "user": f"telegram:{user}",
+                "action": action,
+                "result": result,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+        except:
+            pass  # Don't fail if audit system is down
+    
+    async def kill_switch(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Emergency stop all trading"""
+        if not self.is_authorized(update.effective_user.id):
+            await update.message.reply_text("❌ Unauthorized")
+            return
+        
+        await update.message.reply_text("🚨 KILL SWITCH ACTIVATING...")
+        
+        # Stop all trading services
+        services = ['binance-trades', 'binance-bookticker', 'batch-writer']
+        for service in services:
+            subprocess.run(['sudo', 'systemctl', 'stop', service])
+        
+        self.log_action(
+            user=update.effective_user.username,
+            action="TELEGRAM_KILL_SWITCH",
+            result="SUCCESS"
+        )
+        
+        await update.message.reply_text(
+            "✅ KILL SWITCH ACTIVATED\n"
+            "All trading services stopped.\n"
+            "Access https://ops.aistation.trading for details."
+        )
+    
+    async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Quick status check"""
+        if not self.is_authorized(update.effective_user.id):
+            await update.message.reply_text("❌ Unauthorized")
+            return
+        
+        services = {
+            'redis-hft': 'Redis',
+            'questdb': 'QuestDB', 
+            'binance-trades': 'Trades',
+            'binance-bookticker': 'OrderBook',
+            'batch-writer': 'Writer'
+        }
+        
+        status_text = "📊 *System Status*\n\n"
+        
+        for service, name in services.items():
+            result = subprocess.run(
+                ['systemctl', 'is-active', service],
+                capture_output=True,
+                text=True
+            )
+            is_active = result.stdout.strip() == 'active'
+            emoji = "🟢" if is_active else "🔴"
+            status_text += f"{emoji} {name}: {'Running' if is_active else 'Stopped'}\n"
+        
+        status_text += f"\n🔗 [Open Control Panel](https://ops.aistation.trading)"
+        
+        await update.message.reply_text(
+            status_text,
+            parse_mode='Markdown',
+            disable_web_page_preview=True
+        )
+    
+    async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show available commands"""
+        if not self.is_authorized(update.effective_user.id):
+            await update.message.reply_text("❌ Unauthorized")
+            return
+        
+        help_text = """
+*AI Trading Station - Emergency Controls*
+
+🚨 *Emergency*
+/kill - Activate kill switch (stop all trading)
+
+📊 *Monitoring*
+/status - System status overview
+
+📡 *Data Feed*
+/start_feed - Start market data collection
+/stop_feed - Stop market data collection
+
+⚙️ *Services*
+/restart_redis - Restart Redis
+/restart_questdb - Restart QuestDB
+
+🔗 *Web Access*
+Control Panel: https://ops.aistation.trading
+Grafana: https://grafana.aistation.trading
+
+⚠️ *Note*: This bot is for emergency access only.
+Use the web control panel for normal operations.
+        """
+        
+        await update.message.reply_text(help_text, parse_mode='Markdown')
+
+def main():
+    """Run the bot"""
+    app = Application.builder().token(BOT_TOKEN).build()
+    
+    bot = TradingControlBot()
+    
+    # Register commands
+    app.add_handler(CommandHandler("kill", bot.kill_switch))
+    app.add_handler(CommandHandler("status", bot.status))
+    app.add_handler(CommandHandler("help", bot.help))
+    app.add_handler(CommandHandler("start", bot.help))
+    
+    # Run bot
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()
+```
+
+## 🔐 **2FA Configuration & Recovery**
+
+### **Primary 2FA: TOTP (Time-based One-Time Password)**
+- **Apps**: Google Authenticator, Authy, 1Password
+- **Backup codes**: Generate 10 single-use recovery codes
+- **QR Code**: Stored encrypted in secure location
+
+### **Secondary 2FA: Hardware Keys (Optional)**
+- **Supported**: YubiKey 5 Series
+- **Protocol**: WebAuthn/FIDO2
+- **Benefits**: Phishing-proof, no phone dependency
+
+### **Recovery Process**
+1. **Primary**: Use backup codes (stored offline)
+2. **Secondary**: SSH access to server, reset via CLI
+3. **Emergency**: Telegram bot with separate auth
+
+**Recovery Commands**:
+```bash
+# Reset user password via CLI
+authelia users reset-password youssef
+
+# Generate new TOTP secret
+authelia users totp generate youssef
+
+# Disable 2FA temporarily
+authelia users totp delete youssef
+```
+
+## 📊 **NanoKVM Integration Assessment**
+
+### **Current NanoKVM Analysis**
+Based on your NanoKVM at `https://210.6.8.5:40443`:
+
+**Likely API Endpoints** (common for KVM devices):
+- `/api/auth/login` - Authentication
+- `/api/power/status` - Get power state
+- `/api/power/on` - Power on
+- `/api/power/off` - Graceful shutdown
+- `/api/power/reset` - Force reset
+
+**Integration Feasibility**: ✅ **POSSIBLE**
+- Most KVMs expose REST APIs
+- If no API, we can use Selenium for web automation
+- Worst case: Keep NanoKVM separate for emergencies
+
+**Recommended Approach**:
+1. Try API integration first (cleanest)
+2. If no API, use web scraping (reliable)
+3. Keep direct NanoKVM access as backup
+
+## 🚀 **Implementation Timeline**
+
+### **Day 1**: Core Infrastructure (4-6 hours)
+- Domain setup (aistation.trading)
+- Authelia 2FA configuration
+- Nginx reverse proxy
+- SSL certificates
+
+### **Day 2**: Control Dashboard (6-8 hours)
+- FastAPI backend
+- Frontend UI
+- NanoKVM integration
+- Audit logging system
+
+### **Day 3**: Testing & Hardening (4 hours)
+- Telegram bot setup
+- Security testing
+- Documentation
+- Team training
+
+## ✅ **Final Architecture Summary**
+
+```
+aistation.trading
+    │
+    ├── auth.aistation.trading      [Authelia 2FA Portal]
+    ├── grafana.aistation.trading   [Monitoring - Read Only]
+    ├── ops.aistation.trading       [Control Panel - Full Control]
+    └── power.aistation.trading     [NanoKVM Bridge - Power Only]
+
+Security Layers:
+1. SSL/TLS (Let's Encrypt)
+2. 2FA (TOTP + Recovery Codes)
+3. Role-based Access (Authelia)
+4. Audit Logging (Immutable)
+5. Emergency Access (Telegram Bot)
+```
+
+## 🎯 **Key Benefits of This Solution**
+
+1. **Single Sign-On**: One login for all services
+2. **Bank-grade Security**: 2FA mandatory everywhere
+3. **Complete Audit Trail**: Every action logged immutably
+4. **Emergency Access**: Telegram bot when web is down
+5. **Power Control**: Integrated NanoKVM management
+6. **Zero Lock-in**: All open source, self-hosted
+7. **Cost**: $40/year (domain only)
+
+## 📋 **Next Steps**
+
+1. **Purchase aistation.trading domain**
+2. **Confirm NanoKVM model** (for API documentation)
+3. **Decide on Telegram bot** (recommended for emergencies)
+4. **Begin Day 1 implementation**
+
+This unified solution provides professional-grade monitoring and control with maximum security and minimum cost.
+
+-------------------
+
+# Implementation Guide - Phase 1 Production Deployment + Mobile Strategy
+
+## 🚀 **IMMEDIATE ACTION PLAN** (Starting Now)
+
+### **Step 1: Domain Purchase** (Do Now - 10 minutes)
+```bash
+# Purchase aistation.trading from:
+# - Namecheap: ~$40/year
+# - Cloudflare Registrar: ~$38/year (recommended for integration)
+# - Google Domains: ~$40/year
+
+# Required DNS Records (add immediately after purchase):
+A     @         YOUR_SERVER_IP   # Main domain
+A     auth      YOUR_SERVER_IP   # Authelia 2FA
+A     grafana   YOUR_SERVER_IP   # Monitoring
+A     ops       YOUR_SERVER_IP   # Control panel
+A     api       YOUR_SERVER_IP   # Mobile API endpoint
+```
+
+### **Step 2: Core Infrastructure Installation** (Next 2 hours)
+
+#### **2.1 Install Prerequisites**
+```bash
+# SSH to your server and run:
+sudo apt update
+sudo apt install -y nginx certbot python3-certbot-nginx \
+    postgresql postgresql-contrib redis-server \
+    python3-pip python3-venv git curl wget
+
+# Create working directory
+mkdir -p ~/ai-trading-station/infrastructure
+cd ~/ai-trading-station/infrastructure
+```
+
+#### **2.2 Install Authelia**
+```bash
+# Download Authelia
+wget https://github.com/authelia/authelia/releases/download/v4.37.5/authelia-linux-amd64.tar.gz
+tar xzf authelia-linux-amd64.tar.gz
+sudo mv authelia-linux-amd64 /usr/local/bin/authelia
+sudo chmod +x /usr/local/bin/authelia
+
+# Create directories
+sudo mkdir -p /etc/authelia
+sudo mkdir -p /var/lib/authelia
+
+# Generate secrets
+AUTHELIA_JWT_SECRET=$(openssl rand -hex 32)
+AUTHELIA_SESSION_SECRET=$(openssl rand -hex 32)
+AUTHELIA_STORAGE_KEY=$(openssl rand -hex 32)
+
+# Create configuration
+sudo tee /etc/authelia/configuration.yml << EOF
+server:
+  host: 0.0.0.0
+  port: 9091
+
+jwt_secret: $AUTHELIA_JWT_SECRET
+
+default_redirection_url: https://ops.aistation.trading
+
+totp:
+  issuer: AI Trading Station
+  period: 30
+  skew: 1
+  algorithm: SHA256
+
+authentication_backend:
+  file:
+    path: /var/lib/authelia/users.yml
+    password:
+      algorithm: argon2id
+
+access_control:
+  default_policy: deny
+  rules:
+    - domain: grafana.aistation.trading
+      policy: two_factor
+    - domain: ops.aistation.trading
+      policy: two_factor
+    - domain: api.aistation.trading
+      policy: two_factor
+      methods: ["POST", "GET"]
+
+session:
+  name: authelia_session
+  secret: $AUTHELIA_SESSION_SECRET
+  expiration: 12h
+  inactivity: 2h
+  remember_me_duration: 7d
+  domain: aistation.trading
+
+regulation:
+  max_retries: 3
+  find_time: 2m
+  ban_time: 10m
+
+storage:
+  encryption_key: $AUTHELIA_STORAGE_KEY
+  local:
+    path: /var/lib/authelia/db.sqlite3
+
+notifier:
+  filesystem:
+    filename: /var/lib/authelia/notifications.txt
+EOF
+```
+
+#### **2.3 Create Admin User**
+```bash
+# Generate password hash
+authelia crypto hash generate argon2id --password "YourSecurePasswordHere"
+
+# Create users file
+sudo tee /var/lib/authelia/users.yml << 'EOF'
+users:
+  youssef:
+    displayname: "Youssef Bahloul"
+    password: "$argon2id$v=19$m=65536,t=3,p=4$[YOUR_HASH_HERE]"
+    email: your-email@example.com
+    groups:
+      - admins
+      - traders
+EOF
+
+# Set permissions
+sudo chown -R root:root /etc/authelia
+sudo chown -R root:root /var/lib/authelia
+sudo chmod 600 /var/lib/authelia/users.yml
+```
+
+#### **2.4 Create Authelia Service**
+```bash
+sudo tee /etc/systemd/system/authelia.service << EOF
+[Unit]
+Description=Authelia authentication server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/authelia --config /etc/authelia/configuration.yml
+Restart=always
+RestartSec=5
+Environment=TZ=UTC
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Start Authelia
+sudo systemctl daemon-reload
+sudo systemctl enable authelia
+sudo systemctl start authelia
+```
+
+### **Step 3: Control Panel Deployment** (1 hour)
+
+#### **3.1 Create Control Panel API**
+```bash
+cd ~/ai-trading-station
+mkdir -p ControlPanel/{api,frontend}
+cd ControlPanel
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install fastapi uvicorn aiohttp redis psutil python-telegram-bot
+
+# Create main API file
+cat > api/main.py << 'EOF'
+from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
+import subprocess
+import asyncio
+import json
+from datetime import datetime
+import os
+import redis
+
+app = FastAPI(title="AI Trading Station Control API")
+
+# Enable CORS for mobile access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://ops.aistation.trading", "https://api.aistation.trading"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Redis connection for metrics
+redis_client = redis.Redis(host='localhost', port=6379, decode_responses=True)
+
+async def verify_authelia(request: Request):
+    """Verify user is authenticated via Authelia"""
+    user = request.headers.get("Remote-User")
+    groups = request.headers.get("Remote-Groups", "").split(",")
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    return {"username": user, "groups": groups, "is_admin": "admins" in groups}
+
+# Kill Switch Endpoint
+@app.post("/api/kill-switch")
+async def emergency_kill_switch(
+    confirmation: str,
+    user_info = Depends(verify_authelia)
+):
+    """Emergency stop all trading"""
+    if confirmation != "CONFIRM_EMERGENCY_STOP":
+        raise HTTPException(400, "Invalid confirmation")
+    
+    if not user_info["is_admin"]:
+        raise HTTPException(403, "Admin access required")
+    
+    # Stop all trading services
+    services = ["binance-trades", "binance-bookticker", "batch-writer"]
+    results = []
+    
+    for service in services:
+        try:
+            result = subprocess.run(
+                ["sudo", "systemctl", "stop", service],
+                capture_output=True,
+                timeout=5
+            )
+            results.append({"service": service, "stopped": result.returncode == 0})
+        except Exception as e:
+            results.append({"service": service, "error": str(e)})
+    
+    # Log event
+    log_entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "user": user_info["username"],
+        "action": "KILL_SWITCH",
+        "results": results
+    }
+    
+    with open("/var/log/trading/audit.jsonl", "a") as f:
+        f.write(json.dumps(log_entry) + "\n")
+    
+    return {"status": "emergency_stop_executed", "results": results}
+
+# System Status
+@app.get("/api/status")
+async def get_system_status(user_info = Depends(verify_authelia)):
+    """Get comprehensive system status"""
+    
+    services = {
+        "redis": "redis-server",
+        "questdb": "questdb",
+        "trades": "binance-trades",
+        "orderbook": "binance-bookticker",
+        "writer": "batch-writer",
+        "grafana": "grafana-server"
+    }
+    
+    status = {"services": {}, "metrics": {}}
+    
+    for name, service in services.items():
+        result = subprocess.run(
+            ["systemctl", "is-active", service],
+            capture_output=True,
+            text=True
+        )
+        status["services"][name] = result.stdout.strip() == "active"
+    
+    # Get Redis metrics
+    try:
+        status["metrics"]["redis_connected"] = redis_client.ping()
+        status["metrics"]["trades_stream"] = redis_client.xlen("market:binance_spot:trades:BTCUSDT")
+    except:
+        status["metrics"]["redis_connected"] = False
+    
+    return status
+
+# Data Feed Control
+@app.post("/api/datafeed/{action}")
+async def control_datafeed(action: str, user_info = Depends(verify_authelia)):
+    """Control market data collection"""
+    if action not in ["start", "stop", "restart"]:
+        raise HTTPException(400, "Invalid action")
+    
+    if not user_info["is_admin"]:
+        raise HTTPException(403, "Admin access required")
+    
+    result = subprocess.run(
+        ["datafeed", action],
+        capture_output=True,
+        text=True,
+        timeout=10
+    )
+    
+    return {
+        "action": action,
+        "success": result.returncode == 0,
+        "output": result.stdout
+    }
+
+# Service Management
+@app.post("/api/service/{service}/{action}")
+async def manage_service(
+    service: str,
+    action: str,
+    user_info = Depends(verify_authelia)
+):
+    """Manage individual services"""
+    
+    allowed_services = ["redis", "questdb", "trades", "orderbook", "writer"]
+    
+    if service not in allowed_services:
+        raise HTTPException(400, "Service not allowed")
+    
+    if action not in ["start", "stop", "restart"]:
+        raise HTTPException(400, "Invalid action")
+    
+    if not user_info["is_admin"]:
+        raise HTTPException(403, "Admin access required")
+    
+    service_map = {
+        "redis": "redis-server",
+        "questdb": "questdb",
+        "trades": "binance-trades",
+        "orderbook": "binance-bookticker",
+        "writer": "batch-writer"
+    }
+    
+    actual_service = service_map[service]
+    
+    result = subprocess.run(
+        ["sudo", "systemctl", action, actual_service],
+        capture_output=True,
+        text=True,
+        timeout=10
+    )
+    
+    return {
+        "service": service,
+        "action": action,
+        "success": result.returncode == 0
+    }
+
+# Mount static files for web UI
+app.mount("/", StaticFiles(directory="frontend", html=True), name="static")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8080)
+EOF
+
+# Create systemd service for control panel
+sudo tee /etc/systemd/system/trading-control.service << EOF
+[Unit]
+Description=Trading Control Panel API
+After=network.target authelia.service
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME/ai-trading-station/ControlPanel
+Environment="PATH=$HOME/ai-trading-station/ControlPanel/venv/bin"
+ExecStart=$HOME/ai-trading-station/ControlPanel/venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable trading-control
+sudo systemctl start trading-control
+```
+
+### **Step 4: Nginx Configuration** (30 minutes)
+
+```bash
+# Create Nginx configurations
+sudo tee /etc/nginx/sites-available/aistation.trading << 'EOF'
+# Redirect HTTP to HTTPS
+server {
+    listen 80;
+    server_name *.aistation.trading aistation.trading;
+    return 301 https://$host$request_uri;
+}
+
+# Authelia Portal
+server {
+    listen 443 ssl http2;
+    server_name auth.aistation.trading;
+    
+    ssl_certificate /etc/letsencrypt/live/aistation.trading/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/aistation.trading/privkey.pem;
+    
+    location / {
+        proxy_pass http://localhost:9091;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Grafana Monitoring
+server {
+    listen 443 ssl http2;
+    server_name grafana.aistation.trading;
+    
+    ssl_certificate /etc/letsencrypt/live/aistation.trading/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/aistation.trading/privkey.pem;
+    
+    location /authelia {
+        internal;
+        proxy_pass http://localhost:9091/api/verify;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    }
+    
+    location / {
+        auth_request /authelia;
+        error_page 401 =302 https://auth.aistation.trading/?rd=$scheme://$http_host$request_uri;
+        
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Pass auth headers
+        auth_request_set $user $upstream_http_remote_user;
+        auth_request_set $groups $upstream_http_remote_groups;
+        proxy_set_header Remote-User $user;
+        proxy_set_header Remote-Groups $groups;
+    }
+}
+
+# Control Panel
+server {
+    listen 443 ssl http2;
+    server_name ops.aistation.trading;
+    
+    ssl_certificate /etc/letsencrypt/live/aistation.trading/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/aistation.trading/privkey.pem;
+    
+    location /authelia {
+        internal;
+        proxy_pass http://localhost:9091/api/verify;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    }
+    
+    location / {
+        auth_request /authelia;
+        error_page 401 =302 https://auth.aistation.trading/?rd=$scheme://$http_host$request_uri;
+        
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        auth_request_set $user $upstream_http_remote_user;
+        auth_request_set $groups $upstream_http_remote_groups;
+        proxy_set_header Remote-User $user;
+        proxy_set_header Remote-Groups $groups;
+    }
+}
+
+# Mobile API Endpoint
+server {
+    listen 443 ssl http2;
+    server_name api.aistation.trading;
+    
+    ssl_certificate /etc/letsencrypt/live/aistation.trading/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/aistation.trading/privkey.pem;
+    
+    # CORS headers for mobile
+    add_header Access-Control-Allow-Origin "https://ops.aistation.trading" always;
+    add_header Access-Control-Allow-Credentials true always;
+    
+    location /authelia {
+        internal;
+        proxy_pass http://localhost:9091/api/verify;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    }
+    
+    location / {
+        auth_request /authelia;
+        error_page 401 =302 https://auth.aistation.trading/?rd=$scheme://$http_host$request_uri;
+        
+        proxy_pass http://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        auth_request_set $user $upstream_http_remote_user;
+        auth_request_set $groups $upstream_http_remote_groups;
+        proxy_set_header Remote-User $user;
+        proxy_set_header Remote-Groups $groups;
+    }
+}
+EOF
+
+# Enable site
+sudo ln -s /etc/nginx/sites-available/aistation.trading /etc/nginx/sites-enabled/
+sudo nginx -t
+```
+
+### **Step 5: SSL Certificates** (15 minutes)
+```bash
+# Get wildcard certificate for all subdomains
+sudo certbot certonly --nginx -d aistation.trading -d *.aistation.trading \
+  --email your-email@example.com --agree-tos --no-eff-email
+
+# Restart Nginx
+sudo systemctl restart nginx
+```
+
+---
+
+## 📱 **MOBILE ACCESS SOLUTION** (iPhone Optimized)
+
+### **Three-Tier Mobile Strategy**
+
+#### **Tier 1: Progressive Web App (PWA) - PRIMARY**
+Create an iPhone-optimized web interface that can be added to home screen.
+
+**Implementation**:
+```html
+<!-- mobile.html - Add to ControlPanel/frontend/ -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>AI Trading Control</title>
+    
+    <!-- iOS Icons -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
+    <link rel="apple-touch-startup-image" href="/splash.png">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            height: 100vh;
+            overflow-x: hidden;
+            -webkit-user-select: none;
+        }
+        
+        .header {
+            padding: env(safe-area-inset-top) 20px 20px;
+            background: rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 20px;
+            background: rgba(0,0,0,0.1);
+        }
+        
+        .control-grid {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        .control-card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 25px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .control-card:active {
+            transform: scale(0.95);
+            background: rgba(255,255,255,0.2);
+        }
+        
+        .control-card.emergency {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, #f93b1d, #ea1a00);
+            box-shadow: 0 10px 30px rgba(249, 59, 29, 0.4);
+        }
+        
+        .control-card.emergency:active {
+            background: linear-gradient(135deg, #ea1a00, #c91400);
+        }
+        
+        .control-icon {
+            font-size: 40px;
+            margin-bottom: 10px;
+        }
+        
+        .control-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .control-status {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.3);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            padding: 10px 0 env(safe-area-inset-bottom);
+            display: flex;
+            justify-content: space-around;
+        }
+        
+        .nav-item {
+            padding: 10px 20px;
+            border-radius: 20px;
+            background: rgba(255,255,255,0.1);
+            transition: all 0.3s;
+        }
+        
+        .nav-item.active {
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: white;
+            color: #333;
+            padding: 30px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 350px;
+        }
+        
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+        
+        .modal-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .modal-button {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .modal-button.confirm {
+            background: #f93b1d;
+            color: white;
+        }
+        
+        .modal-button.cancel {
+            background: #e0e0e0;
+            color: #666;
+        }
+        
+        @media (prefers-color-scheme: dark) {
+            .modal-content {
+                background: #1a1a2e;
+                color: white;
+            }
+            
+            .modal-input {
+                background: rgba(255,255,255,0.1);
+                border-color: rgba(255,255,255,0.2);
+                color: white;
+            }
+        }
+        
+        /* iOS-specific optimizations */
+        @supports (-webkit-touch-callout: none) {
+            .control-card {
+                -webkit-touch-callout: none;
+            }
+        }
+        
+        /* Haptic feedback simulation */
+        .haptic {
+            animation: haptic 0.1s;
+        }
+        
+        @keyframes haptic {
+            0% { transform: scale(1); }
+            50% { transform: scale(0.98); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 AI Trading Control</h1>
+        <div class="status-bar">
+            <span id="system-status">🟢 System Online</span>
+            <span id="current-time">--:--</span>
+        </div>
+    </div>
+    
+    <div class="control-grid">
+        <!-- Emergency Kill Switch -->
+        <div class="control-card emergency" onclick="confirmKillSwitch()">
+            <div class="control-icon">🛑</div>
+            <div class="control-title">EMERGENCY STOP</div>
+            <div class="control-status">Stop all trading immediately</div>
+        </div>
+        
+        <!-- Data Feed Control -->
+        <div class="control-card" onclick="toggleDataFeed()">
+            <div class="control-icon">📊</div>
+            <div class="control-title">Data Feed</div>
+            <div class="control-status" id="feed-status">Active</div>
+        </div>
+        
+        <!-- System Power -->
+        <div class="control-card" onclick="showPowerOptions()">
+            <div class="control-icon">⚡</div>
+            <div class="control-title">Power</div>
+            <div class="control-status" id="power-status">ON</div>
+        </div>
+        
+        <!-- Service Status -->
+        <div class="control-card" onclick="showServices()">
+            <div class="control-icon">⚙️</div>
+            <div class="control-title">Services</div>
+            <div class="control-status" id="service-count">6/6 Running</div>
+        </div>
+        
+        <!-- Monitoring -->
+        <div class="control-card" onclick="openGrafana()">
+            <div class="control-icon">📈</div>
+            <div class="control-title">Monitoring</div>
+            <div class="control-status">Open Grafana</div>
+        </div>
+    </div>
+    
+    <div class="bottom-nav">
+        <div class="nav-item active" onclick="showControls()">
+            <span>🎮 Controls</span>
+        </div>
+        <div class="nav-item" onclick="showMetrics()">
+            <span>📊 Metrics</span>
+        </div>
+        <div class="nav-item" onclick="showAlerts()">
+            <span>🔔 Alerts</span>
+        </div>
+    </div>
+    
+    <!-- Kill Switch Modal -->
+    <div id="killModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-title">⚠️ Confirm Emergency Stop</div>
+            <p>This will immediately stop ALL trading activity.</p>
+            <input type="text" 
+                   class="modal-input" 
+                   id="killConfirm" 
+                   placeholder="Type CONFIRM to proceed"
+                   autocomplete="off">
+            <div class="modal-buttons">
+                <button class="modal-button confirm" onclick="executeKillSwitch()">STOP TRADING</button>
+                <button class="modal-button cancel" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Enable iOS web app features
+        if (window.navigator.standalone) {
+            document.body.classList.add('standalone');
+        }
+        
+        // API endpoints
+        const API_BASE = 'https://api.aistation.trading';
+        
+        // Update time
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = 
+                now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+        
+        // Haptic feedback (for devices that support it)
+        function haptic() {
+            if (window.navigator.vibrate) {
+                window.navigator.vibrate(10);
+            }
+            // Add visual feedback
+            event.target.classList.add('haptic');
+            setTimeout(() => {
+                event.target.classList.remove('haptic');
+            }, 100);
+        }
+        
+        // Add haptic to all buttons
+        document.querySelectorAll('.control-card').forEach(card => {
+            card.addEventListener('touchstart', haptic);
+        });
+        
+        // Kill switch functions
+        function confirmKillSwitch() {
+            document.getElementById('killModal').style.display = 'flex';
+        }
+        
+        async function executeKillSwitch() {
+            const confirmation = document.getElementById('killConfirm').value;
+            
+            if (confirmation !== 'CONFIRM') {
+                alert('Please type CONFIRM to proceed');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/kill-switch`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        confirmation: 'CONFIRM_EMERGENCY_STOP'
+                    })
+                });
+                
+                if (response.ok) {
+                    alert('✅ Emergency stop executed successfully');
+                    closeModal();
+                    updateStatus();
+                } else {
+                    alert('❌ Failed to execute emergency stop');
+                }
+            } catch (error) {
+                alert('❌ Network error: ' + error.message);
+            }
+        }
+        
+        function closeModal() {
+            document.getElementById('killModal').style.display = 'none';
+            document.getElementById('killConfirm').value = '';
+        }
+        
+        // Data feed toggle
+        let feedActive = true;
+        async function toggleDataFeed() {
+            const action = feedActive ? 'stop' : 'start';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/datafeed/${action}`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    feedActive = !feedActive;
+                    document.getElementById('feed-status').textContent = 
+                        feedActive ? 'Active' : 'Stopped';
+                    alert(`✅ Data feed ${action}ped`);
+                }
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        }
+        
+        // Open Grafana in new tab
+        function openGrafana() {
+            window.open('https://grafana.aistation.trading', '_blank');
+        }
+        
+        // Update system status
+        async function updateStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/status`, {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Update service count
+                    const services = data.services;
+                    const running = Object.values(services).filter(s => s).length;
+                    const total = Object.keys(services).length;
+                    document.getElementById('service-count').textContent = 
+                        `${running}/${total} Running`;
+                    
+                    // Update system status
+                    if (running === total) {
+                        document.getElementById('system-status').textContent = '🟢 System Online';
+                    } else if (running > 0) {
+                        document.getElementById('system-status').textContent = '🟡 Partial';
+                    } else {
+                        document.getElementById('system-status').textContent = '🔴 Offline';
+                    }
+                }
+            } catch (error) {
+                console.error('Status update failed:', error);
+            }
+        }
+        
+        // Update status every 5 seconds
+        setInterval(updateStatus, 5000);
+        updateStatus();
+        
+        // Service worker for offline capability
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js');
+        }
+    </script>
+</body>
+</html>
+```
+
+**How to Add to iPhone Home Screen**:
+1. Open Safari on iPhone
+2. Navigate to `https://ops.aistation.trading/mobile`
+3. Tap Share button (square with arrow)
+4. Tap "Add to Home Screen"
+5. Name it "AI Trading"
+6. Tap "Add"
+
+#### **Tier 2: Telegram Bot - BACKUP & ALERTS**
+
+**Implementation**:
+```python
+# telegram_bot.py
+import os
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+import subprocess
+import redis
+import json
+from datetime import datetime
+
+# Configuration
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+AUTHORIZED_USERS = [123456789]  # Your Telegram user ID
+
+class TradingBot:
+    def __init__(self):
+        self.redis = redis.Redis(host='localhost', port=6379)
+        
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Welcome message with inline keyboard"""
+        if update.effective_user.id not in AUTHORIZED_USERS:
+            await update.message.reply_text("❌ Unauthorized access")
+            return
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("📊 System Status", callback_data='status'),
+                InlineKeyboardButton("🛑 KILL SWITCH", callback_data='kill')
+            ],
+            [
+                InlineKeyboardButton("▶️ Start Feed", callback_data='feed_start'),
+                InlineKeyboardButton("⏸️ Stop Feed", callback_data='feed_stop')
+            ],
+            [
+                InlineKeyboardButton("📈 Open Grafana", url='https://grafana.aistation.trading'),
+                InlineKeyboardButton("🎮 Control Panel", url='https://ops.aistation.trading')
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            "*AI Trading Station Control*\n\n"
+            "Select an action below or use commands:\n"
+            "/status - System status\n"
+            "/kill - Emergency stop\n"
+            "/feed_start - Start data feed\n"
+            "/feed_stop - Stop data feed\n"
+            "/help - Show all commands",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    
+    async def button_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle inline keyboard button presses"""
+        query = update.callback_query
+        
+        if query.from_user.id not in AUTHORIZED_USERS:
+            await query.answer("Unauthorized", show_alert=True)
+            return
+        
+        await query.answer()
+        
+        if query.data == 'status':
+            await self.send_status(query.message)
+        elif query.data == 'kill':
+            await self.confirm_kill_switch(query.message)
+        elif query.data == 'feed_start':
+            await self.control_feed(query.message, 'start')
+        elif query.data == 'feed_stop':
+            await self.control_feed(query.message, 'stop')
+    
+    async def send_status(self, message):
+        """Send system status"""
+        services = {
+            'redis-server': 'Redis',
+            'questdb': 'QuestDB',
+            'binance-trades': 'Trades',
+            'binance-bookticker': 'OrderBook',
+            'batch-writer': 'Writer'
+        }
+        
+        status_text = "*📊 System Status*\n\n"
+        all_running = True
+        
+        for service, name in services.items():
+            result = subprocess.run(
+                ['systemctl', 'is-active', service],
+                capture_output=True,
+                text=True
+            )
+            is_active = result.stdout.strip() == 'active'
+            
+            if not is_active:
+                all_running = False
+            
+            emoji = "🟢" if is_active else "🔴"
+            status_text += f"{emoji} *{name}*: {'Running' if is_active else 'Stopped'}\n"
+        
+        # Add Redis metrics
+        try:
+            trades_len = self.redis.xlen("market:binance_spot:trades:BTCUSDT")
+            status_text += f"\n📈 *Trades Stream*: {trades_len:,} messages"
+        except:
+            pass
+        
+        # Add quick actions
+        keyboard = [
+            [
+                InlineKeyboardButton("🔄 Refresh", callback_data='status'),
+                InlineKeyboardButton("🎮 More Controls", callback_data='start')
+            ]
+        ]
+        
+        if not all_running:
+            keyboard.insert(0, [InlineKeyboardButton("⚠️ Start All Services", callback_data='start_all')])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await message.edit_text(
+            status_text,
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+    
+    async def confirm_kill_switch(self, message):
+        """Confirm kill switch activation"""
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ CONFIRM KILL", callback_data='kill_confirm'),
+                InlineKeyboardButton("❌ Cancel", callback_data='start')
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await message.edit_text(
+            "⚠️ *EMERGENCY KILL SWITCH*\n\n"
+            "This will immediately STOP all trading activity!\n\n"
+            "Are you absolutely sure?",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+    
+    async def execute_kill_switch(self, message):
+        """Execute emergency stop"""
+        await message.edit_text("🚨 *EXECUTING KILL SWITCH...*", parse_mode='Markdown')
+        
+        services = ['binance-trades', 'binance-bookticker', 'batch-writer']
+        results = []
+        
+        for service in services:
+            result = subprocess.run(
+                ['sudo', 'systemctl', 'stop', service],
+                capture_output=True
+            )
+            results.append(f"• {service}: {'✅' if result.returncode == 0 else '❌'}")
+        
+        await message.edit_text(
+            "🛑 *KILL SWITCH EXECUTED*\n\n" +
+            "\n".join(results) +
+            "\n\nAll trading services have been stopped.",
+            parse_mode='Markdown'
+        )
+        
+        # Log the action
+        self.log_action("TELEGRAM_KILL_SWITCH", "emergency_stop")
+    
+    async def control_feed(self, message, action):
+        """Start or stop data feed"""
+        result = subprocess.run(
+            ['datafeed', action],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode == 0:
+            emoji = "▶️" if action == 'start' else "⏸️"
+            await message.edit_text(
+                f"{emoji} *Data feed {action}ed successfully*",
+                parse_mode='Markdown'
+            )
+        else:
+            await message.edit_text(
+                f"❌ *Failed to {action} data feed*\n\n{result.stderr}",
+                parse_mode='Markdown'
+            )
+    
+    def log_action(self, action, details):
+        """Log actions to audit system"""
+        log_entry = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "source": "telegram",
+            "action": action,
+            "details": details
+        }
+        
+        with open("/var/log/trading/telegram_audit.jsonl", "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+
+def main():
+    """Start the bot"""
+    app = Application.builder().token(BOT_TOKEN).build()
+    bot = TradingBot()
+    
+    # Command handlers
+    app.add_handler(CommandHandler("start", bot.start))
+    app.add_handler(CallbackQueryHandler(bot.button_handler))
+    
+    # Start polling
+    app.run_polling()
+
+if __name__ == '__main__':
+    main()
+```
+
+**Setup Telegram Bot**:
+```bash
+# 1. Create bot via @BotFather on Telegram
+# 2. Get your user ID from @userinfobot
+# 3. Install and configure
+
+pip install python-telegram-bot
+export TELEGRAM_BOT_TOKEN="your-bot-token"
+
+# Create systemd service
+sudo tee /etc/systemd/system/telegram-bot.service << EOF
+[Unit]
+Description=Trading Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$HOME/ai-trading-station/ControlPanel
+Environment="TELEGRAM_BOT_TOKEN=your-bot-token"
+ExecStart=/usr/bin/python3 telegram_bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable telegram-bot
+sudo systemctl start telegram-bot
+```
+
+#### **Tier 3: iOS Shortcuts Integration**
+
+Create iOS Shortcuts for quick actions without opening any app.
+
+**Shortcut 1: Emergency Stop**
+```javascript
+// Add this endpoint to your API
+app.get("/api/shortcuts/kill/{token}", async (req, res) => {
+    if (req.params.token !== "your-secret-shortcut-token") {
+        return res.status(401).send("Unauthorized");
+    }
+    
+    // Execute kill switch
+    // ... kill switch logic ...
+    
+    return res.json({ status: "Emergency stop executed" });
+});
+```
+
+**iOS Shortcut Setup**:
+1. Open Shortcuts app on iPhone
+2. Create new shortcut
+3. Add "Get Contents of URL"
+4. URL: `https://api.aistation.trading/api/shortcuts/kill/your-secret-token`
+5. Add "Show Notification"
+6. Text: "Emergency stop executed"
+7. Add to Home Screen or Siri
+
+### **Mobile Access Summary**
+
+| Method | Access Speed | Features | Best For |
+|--------|-------------|----------|----------|
+| **PWA (Web App)** | ⚡ Instant | Full control, real-time updates | Primary daily use |
+| **Telegram Bot** | ⚡⚡ Very Fast | Commands, alerts, offline capable | Emergency access |
+| **iOS Shortcuts** | ⚡⚡⚡ Fastest | One-tap actions, Siri voice | Critical actions |
+| **Safari Bookmarks** | ⚡ Fast | Full website access | Detailed monitoring |
+
+## 🔐 **Security for Mobile**
+
+1. **2FA on all access** - Required even from mobile
+2. **Session timeout** - 2 hours on mobile (vs 12 on desktop)
+3. **Biometric auth** - Face ID/Touch ID for saved passwords
+4. **VPN recommendation** - Use VPN on public WiFi
+5. **Emergency lockout** - Can disable mobile access remotely
+
+## 📱 **Mobile Setup Instructions**
+
+### **For iPhone (Your Device)**
+
+1. **Add PWA to Home Screen**:
+   - Open Safari
+   - Go to `https://ops.aistation.trading/mobile`
+   - Tap Share → Add to Home Screen
+   - Name: "AI Trading"
+   
+2. **Setup Telegram Bot**:
+   - Search for your bot in Telegram
+   - Send `/start`
+   - Pin chat to top
+   
+3. **Create iOS Shortcuts**:
+   - Emergency Stop
+   - Check Status
+   - Start/Stop Feed
+   - Add to widgets for lock screen access
+
+4. **Enable Notifications**:
+   - Allow notifications from Safari
+   - Enable Telegram notifications
+   - Set critical alerts for emergencies
+
+## 🚨 **Emergency Mobile Procedures**
+
+**Scenario 1: Need to stop trading immediately**
+- Fastest: iOS Shortcut widget (1 tap)
+- Backup: Telegram `/kill` command
+- Full control: PWA emergency button
+
+**Scenario 2: Check system while traveling**
+- Open PWA from home screen
+- View real-time status
+- Access full Grafana if needed
+
+**Scenario 3: Get alerts**
+- Telegram bot sends critical alerts
+- iOS notifications for system events
+- Email backup for all alerts
+
+## ✅ **Next Steps**
+
+1. **Complete Phase 1 infrastructure** (2-3 hours)
+2. **Test mobile access** (30 minutes)
+3. **Setup Telegram bot** (30 minutes)
+4. **Create iOS shortcuts** (15 minutes)
+5. **Document emergency procedures** (15 minutes)
+
+**Ready to start with Step 1 (domain purchase)?** Once you confirm the domain is purchased and DNS is set up, I'll guide you through each installation step in real-time.
+
+
+
+

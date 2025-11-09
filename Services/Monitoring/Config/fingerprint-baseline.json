@@ -1,0 +1,27 @@
+{
+  "timestamp": "2025-10-30T14:43:23Z",
+  "redis_binary_hash": "04f4fa42f998a1485606e4395d23aa8f05dacd62b9194e77f93375bbbe2e1adc",
+  "redis_config_hash": "206cf5406069069bc2d6a7a4564cb595f7b676e6036291f9f6dc010c656a3203",
+  "systemd_unit_hash": "da4f16a9577a74326a1a57b2f56c4e556220ac28e24e095e92929eb34ef6d770",
+  "kernel_release": "6.8.0-85-generic",
+  "kernel_cmdline": "BOOT_IMAGE=/boot/vmlinuz-6.8.0-85-generic root=UUID=ae013dd9-c637-40fa-860c-4389d82cc97c ro isolcpus=2,3 rcu_nocbs=2,3 nohz_full=2,3 irqaffinity=0,1 intel_pstate=active processor.max_cstate=1 transparent_hugepage=madvise idle=poll intel_idle.max_cstate=0 preempt=full nohz=on threadirqs quiet splash vt.handoff=7",
+  "thp_enabled": "madvise",
+  "thp_defrag": "madvise",
+  "swappiness": "1",
+  "irq_affinity_map": "135: eno1;136: eno1;137: eno1;138: eno1;139: eno1;140: eno1;141: eno1;142: eno1;143: eno1;155: enp130s0f0-0;156: enp130s0f0-1;157: enp130s0f0-2;158: enp130s0f0-3;159: enp130s0f0-4;160: enp130s0f0-5;161: enp130s0f0-6;162: enp130s0f0-7;163: enp130s0f0-ptp;169: enp130s0f1-0;170: enp130s0f1-1;171: enp130s0f1-2;172: enp130s0f1-3;173: enp130s0f1-4;174: enp130s0f1-5;175: enp130s0f1-6;176: enp130s0f1-7;177: enp130s0f1-ptp",
+  "irqbalance_status": "not_installed",
+  "cpu_governor": "BIOS_PERFORMANCE",
+  "numa_nodes": "1",
+  "onload_version": "9.0.2.140",
+  "nic_driver": "atlantic",
+  "mlock_status": "8192",
+  "hugepages_status": "50000",
+  "monitor_tail_mode": "standard",
+  "tail_thresholds": {
+    "p99_9_max_rtt": 20.0,
+    "tail_span_max_rtt": 8.0,
+    "gate_enabled": false,
+    "warn_only": true
+  },
+  "baseline_compare": "NOT_IMPLEMENTED"
+}

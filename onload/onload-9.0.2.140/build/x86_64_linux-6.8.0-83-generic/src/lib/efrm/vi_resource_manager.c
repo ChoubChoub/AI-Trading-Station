@@ -1,1 +1,0 @@
-../../../../../src/lib/efrm/vi_resource_manager.c

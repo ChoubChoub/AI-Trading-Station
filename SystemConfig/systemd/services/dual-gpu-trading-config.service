@@ -1,0 +1,20 @@
+[Unit]
+Description=Dual RTX PRO 6000 GPU Clock Locking for Trading
+Documentation=file:///home/youssefbahloul/ai-trading-station/Documentation/Module 3
+After=multi-user.target nvidia-persistenced.service
+Wants=nvidia-persistenced.service
+
+[Service]
+Type=oneshot
+ExecStart=/home/youssefbahloul/ai-trading-station/Services/GPU/blackwell_maxq_optimizer.sh
+RemainAfterExit=yes
+User=root
+StandardOutput=journal
+StandardError=journal
+
+# Restart on failure
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

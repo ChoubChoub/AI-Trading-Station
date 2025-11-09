@@ -1,0 +1,14 @@
+[Unit]
+Description=Ultra-Low Latency NIC Optimization
+After=network-online.target systemd-udev-settle.service configure-nic-irq-affinity.service
+Wants=network-online.target
+Requires=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ultra-low-latency-nic.sh
+RemainAfterExit=yes
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
