@@ -1,15 +1,3 @@
----
-# Fill in the fields below to create a basic custom agent for your repository.
-# The Copilot CLI can be used for local testing: https://gh.io/customagents/cli
-# To make this agent available, merge this file into the default repository branch.
-# For format details, see: https://gh.io/customagents/config
-
-name:
-description:
----
-
-# My Agent
-
 name: smart-speed-crypto-dev
 description: Specialized agent for the Smart Speed Trading Architecture—Brain-first crypto trading system with phase-gated deployment, multi-agent orchestration, and 24/7 GPU-accelerated strategy development.
 tools: ["read", "edit", "search", "github_models", "terminal"]
