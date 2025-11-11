@@ -1,0 +1,45 @@
+[Unit]
+Description=QuestDB Guardian - Real-time WAL Corruption Detection & Recovery
+Documentation=https://questdb.io/docs/
+After=questdb.service
+Requires=questdb.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=youssefbahloul
+Group=youssefbahloul
+WorkingDirectory=/home/youssefbahloul/ai-trading-station/Services/QuestDB/Runtime
+
+# Environment variables for Telegram alerts
+Environment="TELEGRAM_BOT_TOKEN=8219231407:AAFC7VXent7OLXVTjYoUxa34TP4iKDWQ6zM"
+Environment="TELEGRAM_CHAT_ID=7579975187"
+
+# Guardian execution
+ExecStart=/usr/bin/python3 /home/youssefbahloul/ai-trading-station/Services/QuestDB/Runtime/questdb_guardian.py
+
+# Restart policy for critical monitoring
+Restart=always
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=32768
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/youssefbahloul/ai-trading-station/Services/QuestDB/data
+ReadWritePaths=/home/youssefbahloul/ai-trading-station/Services/QuestDB/logs
+ReadWritePaths=/tmp
+
+# Logging
+StandardOutput=append:/home/youssefbahloul/ai-trading-station/Services/QuestDB/logs/guardian-service.log
+StandardError=append:/home/youssefbahloul/ai-trading-station/Services/QuestDB/logs/guardian-service-error.log
+SyslogIdentifier=questdb-guardian
+
+[Install]
+WantedBy=multi-user.target

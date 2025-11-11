@@ -32,7 +32,9 @@ SystemConfig/
 │   └── crontab.txt                    # Full crontab export (restore: crontab crontab.txt)
 ├── kernel/                           # ⚙️ Kernel-level configurations
 │   ├── grub/                         # GRUB boot parameters (manual integration)
-│   └── modprobe.d/                   # Kernel module settings → /etc/modprobe.d/
+│   ├── modprobe.d/                   # Kernel module settings → /etc/modprobe.d/
+│   ├── modules-load.d/               # Modules to load at boot → /etc/modules-load.d/
+│   └── README_kvm.md                 # KVM/virtualization configuration guide
 ├── network/                          # 🌐 Network optimization scripts → /usr/local/bin/
 │   ├── configure-nic-irq-affinity.sh
 │   └── ultra-low-latency-nic.sh
@@ -66,8 +68,10 @@ SystemConfig/
 │   └── redis-monitoring
 ├── udev/                             # 🔌 Hardware device rules → /etc/udev/rules.d/
 │   └── rules.d/
-└── shell/                            # 🐚 Shell environment → ~/.bashrc.trading
-    └── bashrc.trading
+└── shell/                            # 🐚 Shell environment & management scripts
+    ├── bashrc.trading                # Trading environment → ~/.bashrc.trading
+    ├── datafeed.sh                   # Data feed management → /usr/local/bin/datafeed
+    └── vm-manager.sh                 # VM lifecycle management → /usr/local/bin/vm-manager
 ```
 
 **Legacy Script:** `Services/System/deploy-system-config.sh` (original version, still functional)
@@ -250,9 +254,10 @@ sudo ./deploy-system-config-enhanced.sh --dry-run
 | 7 | **sysctl** | System tuning parameters | 2 configs → `/etc/sysctl.d/` |
 | 8 | **udev** | Hardware device rules | 1 rule → `/etc/udev/rules.d/` |
 | 9 | **sudoers** | Passwordless sudo configurations | 3 files → `/etc/sudoers.d/` |
-| c | **cron** | Scheduled jobs (crontab) | Appends to user crontab |
-| s | **shell** | Shell environment (bashrc.trading) | 1 file → `~/.bashrc.trading` |
-| a | **all** | Deploy everything | All of the above |
+  10 | **kvm** | KVM virtualization modules | 1 config → `/etc/modules-load.d/` |
+  c | **cron** | Scheduled jobs (crontab) | Appends to user crontab |
+  s | **shell** | Shell environment & management scripts | 3 files → `~/.bashrc.trading`, `/usr/local/bin/` |
+  a | **all** | Deploy everything | All of the above |
 
 ---
 
@@ -414,6 +419,10 @@ sudo udevadm control --reload-rules
 | **Sysctl Parameters** | `sysctl.d/` | `/etc/sysctl.d/` | N/A |
 | **Udev Rules** | `udev/rules.d/` | `/etc/udev/rules.d/` | N/A |
 | **Cron Schedules** | `cron/crontab.txt` | Per-user crontab (restore: `crontab crontab.txt`) | N/A |
+| **Shell Environment** | `shell/bashrc.trading` | `~/.bashrc.trading` | N/A |
+| **Datafeed Manager** | `shell/datafeed.sh` | `/usr/local/bin/datafeed` | N/A |
+| **VM Manager** | `shell/vm-manager.sh` | `/usr/local/bin/vm-manager` | N/A |
+| **KVM Modules** | `kernel/modules-load.d/` | `/etc/modules-load.d/` | N/A |
 | **Trading Scripts** | N/A | N/A | `Services/QuestDB/Runtime/` |
 | **GPU Scripts** | N/A | N/A | `Services/GPU/` |
 | **QuestDB Binary** | N/A | N/A | `Services/QuestDB/questdb-*/` |
@@ -642,6 +651,232 @@ These configurations deliver:
 4. **Network scripts are deployed to system** — They live in `/usr/local/bin/` for early boot access
 5. **Deployment script is in SystemConfig** — Located at `SystemConfig/deploy-system-config-enhanced.sh`
 6. **Cron jobs are additive** — Deployment appends jobs; won't duplicate existing entries
+
+---
+
+## �️ Management Scripts
+
+SystemConfig includes management scripts that are deployed to `/usr/local/bin/` for system-wide access. These scripts provide command-line tools for managing various aspects of the trading system.
+
+### Available Scripts
+
+| Script | Deployed As | Purpose | Usage |
+|--------|-------------|---------|-------|
+| `datafeed.sh` | `/usr/local/bin/datafeed` | Manage market data feed services | `datafeed {start\|stop\|status\|logs\|health\|metrics}` |
+| `vm-manager.sh` | `/usr/local/bin/vm-manager` | Manage development VM lifecycle | `vm-manager {start\|stop\|status\|console\|ssh}` |
+
+### Datafeed Manager
+
+The `datafeed` command controls all market data collection services:
+
+**Commands:**
+```bash
+# Start all data feed services
+datafeed start
+
+# Stop all data feed services
+datafeed stop
+
+# Check status of all services
+datafeed status
+
+# View logs (trades, orderbook, batch, or all)
+datafeed logs trades
+datafeed logs all
+
+# Health check
+datafeed health
+
+# View metrics
+datafeed metrics
+
+# Test connection to Redis and QuestDB
+datafeed test
+```
+
+**Managed Services:**
+- `binance-trades.service` - Trade data collector
+- `binance-bookticker.service` - Order book data collector  
+- `batch-writer.service` - Redis to QuestDB batch writer
+
+### VM Manager
+
+The `vm-manager` command controls the development VM:
+
+**Commands:**
+```bash
+# Start the development VM
+vm-manager start
+
+# Stop the VM
+vm-manager stop
+
+# Check VM status
+vm-manager status
+
+# Open VM console
+vm-manager console
+
+# SSH into VM
+vm-manager ssh [username]
+```
+
+**Features:**
+- Automatic KVM/TCG detection (hardware acceleration when available)
+- Workspace folder sharing via 9p/virtfs
+- Port forwarding for SSH access
+- Safe isolated environment for development
+
+### Deployment
+
+All management scripts are deployed as part of the `shell` component:
+
+```bash
+# Deploy all shell scripts
+sudo ./deploy-system-config-enhanced.sh shell
+
+# Test deployment
+./deploy-system-config-enhanced.sh --test shell
+
+# Verify deployment
+which datafeed vm-manager
+datafeed --help
+vm-manager status
+```
+
+---
+
+## �🖥️ KVM Virtualization & Development VM
+
+### Overview
+
+The trading station includes KVM (Kernel-based Virtual Machine) support for running a development VM. This provides a **safe, isolated environment for testing changes** without affecting the production trading system.
+
+**Important:** KVM modules and VM management have **zero performance impact on production trading** when the VM is not running.
+
+### Configuration Files
+
+| File | SystemConfig Location | System Location | Purpose |
+|------|----------------------|-----------------|---------|
+| `kvm.conf` | `kernel/modules-load.d/` | `/etc/modules-load.d/` | Auto-load KVM modules at boot |
+| `vm-manager.sh` | `shell/` | `/usr/local/bin/vm-manager` | VM lifecycle management script |
+
+### Deployment
+
+The KVM modules and VM manager script are deployed as part of their respective components:
+
+```bash
+# Deploy KVM modules configuration
+cd /home/youssefbahloul/ai-trading-station/SystemConfig/
+sudo ./deploy-system-config-enhanced.sh kvm
+
+# Deploy VM manager script
+sudo ./deploy-system-config-enhanced.sh shell
+
+# Or deploy both together
+sudo ./deploy-system-config-enhanced.sh kvm shell
+
+# Verify deployment
+ls -l /etc/modules-load.d/kvm.conf
+ls -l /usr/local/bin/vm-manager
+lsmod | grep kvm
+```
+
+**After deployment:**
+- KVM modules will load automatically on every boot
+- VM manager will be available system-wide as `vm-manager` command
+- VM will NOT start automatically (must be started manually)
+
+### Requirements
+
+1. **BIOS Settings** (one-time setup):
+   - Enable **Intel VT-x (VMX)** or **AMD-V (SVM)** in BIOS
+   - Location: `Advanced` → `CPU Configuration` → `Intel (VMX) Virtualization Technology` → `[Enabled]`
+   - Optional: Enable **VT-d** for device passthrough
+
+2. **User Group Membership**:
+   ```bash
+   sudo usermod -aG kvm youssefbahloul
+   # Log out and back in for changes to take effect
+   ```
+
+3. **KVM Modules** (loaded automatically at boot after deployment):
+   ```bash
+   lsmod | grep kvm
+   # Should show: kvm_intel, kvm
+   ```
+
+### VM Management
+
+**Start VM** (manual, never automatic):
+```bash
+vm-manager start
+```
+
+**Check VM Status**:
+```bash
+vm-manager status
+```
+
+**Stop VM**:
+```bash
+vm-manager stop
+```
+
+**SSH into VM**:
+```bash
+ssh trading-vm          # From your Mac
+ssh -p 2222 username@localhost  # From the host
+```
+
+### Performance & Production Safety
+
+**KVM modules are safe for production:**
+- ✅ **Zero CPU overhead** when VM is not running
+- ✅ **Zero memory overhead** when VM is not running
+- ✅ **No network impact** on production NIC
+- ✅ **VM never starts automatically** at boot
+- ✅ **Trading services unaffected** by KVM presence
+
+**The VM is designed for development only:**
+- Test code changes before production deployment
+- Safe environment for experimentation
+- Workspace folder shared with host via 9p/virtfs
+- No impact on ultra-low latency trading when VM is stopped
+
+### Troubleshooting
+
+**KVM modules not loading:**
+```bash
+# Check if Intel VT-x is enabled
+egrep -c '(vmx|svm)' /proc/cpuinfo  # Should return > 0
+
+# Manually load modules
+sudo modprobe kvm
+sudo modprobe kvm_intel
+
+# Check for errors
+dmesg | grep kvm
+```
+
+**Permission denied when starting VM:**
+```bash
+# Check user is in kvm group
+groups | grep kvm
+
+# If not, add user and re-login
+sudo usermod -aG kvm $USER
+# Log out and back in
+```
+
+**VM won't start:**
+```bash
+# Check VM log for errors
+cat ~/.ai-trading-vm/ai-trading-dev.log
+
+# Verify KVM device exists
+ls -l /dev/kvm
+```
 
 ---
 

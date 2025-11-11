@@ -1,0 +1,30 @@
+# QuestDB Guardian log rotation configuration
+# Prevents unbounded log growth while maintaining forensic history
+
+# Application logs
+/home/youssefbahloul/ai-trading-station/Services/QuestDB/logs/guardian.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 youssefbahloul youssefbahloul
+    sharedscripts
+    postrotate
+        # Restart Guardian to reopen log files
+        systemctl restart questdb-guardian.service > /dev/null 2>&1 || true
+    endscript
+}
+
+# Corruption events log (keep longer for forensic analysis)
+/home/youssefbahloul/ai-trading-station/Services/QuestDB/backups/corruption_events.jsonl {
+    weekly
+    rotate 52
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 youssefbahloul youssefbahloul
+    # No reload needed - this is append-only
+}

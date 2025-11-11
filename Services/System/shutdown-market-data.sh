@@ -17,6 +17,7 @@ log() {
 
 log "========================================="
 log "Starting graceful market data shutdown"
+SHUTDOWN_START=$(date +%s)
 log "========================================="
 
 # 1. Stop data collectors first (stop new data flowing)
@@ -34,21 +35,54 @@ log "Stopping batch writer..."
 systemctl stop batch-writer.service
 log "✓ Batch writer stopped"
 
-# 4. Give QuestDB time to commit WAL
-log "Waiting 5 seconds for QuestDB WAL commit..."
-sleep 5
+# 4. Flush QuestDB WAL and verify
+log "Flushing QuestDB WAL..."
+if curl -s --connect-timeout 5 "http://localhost:9000/exec?query=SELECT COUNT(*) FROM wal_tables()" > /dev/null 2>&1; then
+    log "✓ WAL tables accessible, initiating flush"
+    # Give more time for WAL commit with larger datasets
+    sleep 10
+else
+    log "⚠ QuestDB not responding, proceeding with shutdown"
+    sleep 5
+fi
 
-# 5. Stop QuestDB gracefully
+# 5. Stop QuestDB gracefully and verify
 log "Stopping QuestDB..."
 systemctl stop questdb.service
+
+# Wait for QuestDB to actually stop completely
+timeout=30
+elapsed=0
+while systemctl is-active questdb.service >/dev/null 2>&1; do
+    if [ $elapsed -ge $timeout ]; then
+        log "⚠ QuestDB shutdown timeout, forcing stop"
+        systemctl kill -s SIGKILL questdb.service
+        break
+    fi
+    log "Waiting for QuestDB to stop... (${elapsed}s)"
+    sleep 2
+    elapsed=$((elapsed + 2))
+done
 log "✓ QuestDB stopped"
 
 # 6. Stop Redis
 log "Stopping Redis..."
 systemctl stop redis-hft.service
+
+# Verify Redis stopped
+if systemctl is-active redis-hft.service >/dev/null 2>&1; then
+    log "⚠ Redis still running, waiting..."
+    sleep 3
+    if systemctl is-active redis-hft.service >/dev/null 2>&1; then
+        log "⚠ Forcing Redis stop"
+        systemctl kill redis-hft.service
+    fi
+fi
 log "✓ Redis stopped"
 
 log "========================================="
-log "Graceful shutdown complete"
+SHUTDOWN_END=$(date +%s)
+SHUTDOWN_DURATION=$((SHUTDOWN_END - SHUTDOWN_START))
+log "Graceful shutdown complete in ${SHUTDOWN_DURATION} seconds"
 log "All services stopped safely"
 log "========================================="

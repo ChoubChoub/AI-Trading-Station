@@ -7,7 +7,7 @@ Before=shutdown.target reboot.target halt.target
 [Service]
 Type=oneshot
 ExecStart=/home/youssefbahloul/ai-trading-station/Services/System/shutdown-market-data.sh
-TimeoutStartSec=30
+TimeoutStartSec=60
 RemainAfterExit=yes
 
 [Install]

@@ -88,6 +88,8 @@ show_components() {
     echo "  [7] sysctl              - System tuning parameters"
     echo "  [8] udev                - Hardware device rules"
     echo "  [9] sudoers             - Passwordless sudo configurations"
+    echo "  [10] kvm                - KVM virtualization modules"
+    echo "  [11] logrotate          - Log rotation configurations"
     echo "  [c] cron                - Scheduled jobs (crontab)"
     echo "  [s] shell               - Shell environment (bashrc.trading)"
     echo "  [a] all                 - Deploy everything"
@@ -102,7 +104,7 @@ interactive_selection() {
     read -r selection
     
     if [[ "$selection" == "a" ]] || [[ "$selection" == "all" ]]; then
-        SELECTED_COMPONENTS=(systemd-services systemd-overrides kernel network redis onload sysctl udev sudoers cron shell)
+        SELECTED_COMPONENTS=(systemd-services systemd-overrides kernel network redis onload sysctl udev sudoers kvm logrotate cron shell)
         log_select "Selected: ALL components"
     else
         for num in $selection; do
@@ -116,6 +118,8 @@ interactive_selection() {
                 7) SELECTED_COMPONENTS+=(sysctl) ;;
                 8) SELECTED_COMPONENTS+=(udev) ;;
                 9) SELECTED_COMPONENTS+=(sudoers) ;;
+                10) SELECTED_COMPONENTS+=(kvm) ;;
+                11) SELECTED_COMPONENTS+=(logrotate) ;;
                 c|C) SELECTED_COMPONENTS+=(cron) ;;
                 s|S) SELECTED_COMPONENTS+=(shell) ;;
                 *) log_warning "Unknown selection: $num" ;;
@@ -227,6 +231,10 @@ compute_destination() {
         udev/rules.d/*.rules)
             dest="/etc/udev/rules.d/${rel#udev/rules.d/}"
             perms="644"; type="udev";
+            ;;
+        logrotate.d/*)
+            dest="/etc/logrotate.d/${rel#logrotate.d/}"
+            perms="644"; type="logrotate";
             ;;
         kernel/grub/*.conf)
             # Inform-only; manual integration
@@ -730,72 +738,217 @@ deploy_shell() {
 
     echo ""
     log_info "══════════════════════════════════════════════════════════════="
-    log_info "Deploying Shell (bash) Trading Snippet"
+    log_info "Deploying Shell Scripts and Environment"
     log_info "══════════════════════════════════════════════════════════════="
 
+    # Deploy bashrc.trading
     local src="$SYSTEMCONFIG_DIR/shell/bashrc.trading"
-    if [[ ! -f "$src" ]]; then
+    if [[ -f "$src" ]]; then
+        # Determine target user/home
+        local target_user=""
+        if [[ -n "$SUDO_USER" ]]; then
+            target_user="$SUDO_USER"
+        else
+            # try to detect interactive user
+            target_user="$(logname 2>/dev/null || echo "$USER")"
+        fi
+
+        if [[ -z "$target_user" ]]; then
+            log_warning "Could not determine target user for shell deployment. You may run the script without sudo to deploy to current user."
+        else
+            local target_home
+            target_home=$(eval echo "~$target_user")
+            local dest="$target_home/.bashrc.trading"
+            local bashrc_file="$target_home/.bashrc"
+
+            if [[ "$TEST_MODE" == true ]]; then
+                log_test "Would copy: $src -> $dest"
+                log_test "Would ensure: source ~/.bashrc.trading is present in $bashrc_file (for user: $target_user)"
+            elif [[ ! -d "$target_home" ]]; then
+                log_error "Target home directory does not exist: $target_home"
+            else
+                # Backup and copy
+                backup_existing "$dest"
+                cp "$src" "$dest"
+                chown "$target_user":"$target_user" "$dest" || true
+                chmod 644 "$dest" || true
+                log_success "Deployed shell snippet to: $dest"
+
+                # Ensure the user's ~/.bashrc sources the snippet (avoid duplicates)
+                if [[ ! -f "$bashrc_file" ]]; then
+                    touch "$bashrc_file" || true
+                    chown "$target_user":"$target_user" "$bashrc_file" || true
+                fi
+
+                local source_line='[ -f "$HOME/.bashrc.trading" ] && source "$HOME/.bashrc.trading"'
+                # Write a literal source line into the user's bashrc if missing
+                if ! grep -Fxq '[ -f "$HOME/.bashrc.trading" ] && source "$HOME/.bashrc.trading"' "$bashrc_file" 2>/dev/null; then
+                    echo "" >> "$bashrc_file" || true
+                    echo "# AI Trading Station: source trading shell snippet" >> "$bashrc_file" || true
+                    echo '[ -f "$HOME/.bashrc.trading" ] && source "$HOME/.bashrc.trading"' >> "$bashrc_file" || true
+                    chown "$target_user":"$target_user" "$bashrc_file" || true
+                    log_success "Appended source line to $bashrc_file"
+                else
+                    log_info "User bashrc already sources .bashrc.trading"
+                fi
+            fi
+        fi
+    else
         log_warning "No shell snippet found at: $src"
-        return 0
     fi
 
-    # Determine target user/home
-    local target_user=""
-    if [[ -n "$SUDO_USER" ]]; then
-        target_user="$SUDO_USER"
+    # Deploy vm-manager.sh to /usr/local/bin/vm-manager
+    local vm_src="$SYSTEMCONFIG_DIR/shell/vm-manager.sh"
+    if [[ -f "$vm_src" ]]; then
+        local vm_dest="/usr/local/bin/vm-manager"
+        
+        if [[ "$TEST_MODE" == true ]]; then
+            local test_dest="$TEST_DIR$vm_dest"
+            mkdir -p "$(dirname "$test_dest")"
+            log_test "Would copy: $vm_src -> $vm_dest"
+            cp "$vm_src" "$test_dest"
+            chmod +x "$test_dest"
+        elif [[ "$DRY_RUN" == true ]]; then
+            log_info "Would deploy VM manager script: vm-manager.sh → /usr/local/bin/vm-manager"
+        else
+            backup_existing "$vm_dest"
+            cp "$vm_src" "$vm_dest"
+            chmod +x "$vm_dest"
+            log_success "Deployed VM manager: $vm_dest"
+            log_info "VM can be managed with: vm-manager {start|stop|status|console|ssh}"
+        fi
     else
-        # try to detect interactive user
-        target_user="$(logname 2>/dev/null || echo "$USER")"
+        log_warning "No VM manager script found at: $vm_src"
     fi
 
-    if [[ -z "$target_user" ]]; then
-        log_warning "Could not determine target user for shell deployment. You may run the script without sudo to deploy to current user."
-        return 1
-    fi
-
-    local target_home
-    target_home=$(eval echo "~$target_user")
-    local dest="$target_home/.bashrc.trading"
-    local bashrc_file="$target_home/.bashrc"
-
-    if [[ "$TEST_MODE" == true ]]; then
-        log_test "Would copy: $src -> $dest"
-        log_test "Would ensure: source ~/.bashrc.trading is present in $bashrc_file (for user: $target_user)"
-        return 0
-    fi
-
-    # Ensure home exists
-    if [[ ! -d "$target_home" ]]; then
-        log_error "Target home directory does not exist: $target_home"
-        return 1
-    fi
-
-    # Backup and copy
-    backup_existing "$dest"
-    cp "$src" "$dest"
-    chown "$target_user":"$target_user" "$dest" || true
-    chmod 644 "$dest" || true
-    log_success "Deployed shell snippet to: $dest"
-
-    # Ensure the user's ~/.bashrc sources the snippet (avoid duplicates)
-    if [[ ! -f "$bashrc_file" ]]; then
-        touch "$bashrc_file" || true
-        chown "$target_user":"$target_user" "$bashrc_file" || true
-    fi
-
-    local source_line='[ -f "$HOME/.bashrc.trading" ] && source "$HOME/.bashrc.trading"'
-    # Write a literal source line into the user's bashrc if missing
-    if ! grep -Fxq '[ -f "$HOME/.bashrc.trading" ] && source "$HOME/.bashrc.trading"' "$bashrc_file" 2>/dev/null; then
-        echo "" >> "$bashrc_file" || true
-        echo "# AI Trading Station: source trading shell snippet" >> "$bashrc_file" || true
-        echo '[ -f "$HOME/.bashrc.trading" ] && source "$HOME/.bashrc.trading"' >> "$bashrc_file" || true
-        chown "$target_user":"$target_user" "$bashrc_file" || true
-        log_success "Appended source line to $bashrc_file"
+    # Deploy datafeed.sh to /usr/local/bin/datafeed
+    local datafeed_src="$SYSTEMCONFIG_DIR/shell/datafeed.sh"
+    if [[ -f "$datafeed_src" ]]; then
+        local datafeed_dest="/usr/local/bin/datafeed"
+        
+        if [[ "$TEST_MODE" == true ]]; then
+            local test_dest="$TEST_DIR$datafeed_dest"
+            mkdir -p "$(dirname "$test_dest")"
+            log_test "Would copy: $datafeed_src -> $datafeed_dest"
+            cp "$datafeed_src" "$test_dest"
+            chmod +x "$test_dest"
+        elif [[ "$DRY_RUN" == true ]]; then
+            log_info "Would deploy datafeed script: datafeed.sh → /usr/local/bin/datafeed"
+        else
+            backup_existing "$datafeed_dest"
+            cp "$datafeed_src" "$datafeed_dest"
+            chmod +x "$datafeed_dest"
+            log_success "Deployed datafeed manager: $datafeed_dest"
+            log_info "Data feeds can be managed with: datafeed {start|stop|status|logs|health|metrics}"
+        fi
     else
-        log_info "User bashrc already sources .bashrc.trading"
+        log_warning "No datafeed script found at: $datafeed_src"
     fi
 
     return 0
+}
+
+# Deploy KVM modules configuration
+deploy_kvm() {
+    if ! is_selected "kvm"; then
+        return 0
+    fi
+
+    echo ""
+    log_info "══════════════════════════════════════════════════════════════="
+    log_info "Deploying KVM Virtualization Modules"
+    log_info "══════════════════════════════════════════════════════════════="
+
+    local src_dir="$SYSTEMCONFIG_DIR/kernel/modules-load.d"
+    local dest_dir="/etc/modules-load.d"
+
+    if [[ ! -d "$src_dir" ]]; then
+        log_warning "No KVM modules-load.d directory found at: $src_dir"
+        return 0
+    fi
+
+    if [[ "$TEST_MODE" == true ]]; then
+        local test_dest="$TEST_DIR$dest_dir"
+        mkdir -p "$test_dest"
+        log_test "Would deploy KVM modules to: $dest_dir"
+        
+        for conf in "$src_dir"/*.conf; do
+            [[ -e "$conf" ]] || continue
+            local fname=$(basename "$conf")
+            log_test "Would copy: $conf -> $dest_dir/$fname"
+            cp "$conf" "$test_dest/$fname"
+        done
+        return 0
+    fi
+
+    if [[ "$DRY_RUN" == true ]]; then
+        log_info "Would deploy KVM modules configuration files:"
+        for conf in "$src_dir"/*.conf; do
+            [[ -e "$conf" ]] || continue
+            local fname=$(basename "$conf")
+            log_info "  → $fname"
+        done
+        return 0
+    fi
+
+    # Deploy each .conf file
+    local deployed=0
+    for conf in "$src_dir"/*.conf; do
+        [[ -e "$conf" ]] || continue
+        local fname=$(basename "$conf")
+        local dest="$dest_dir/$fname"
+        
+        backup_existing "$dest"
+        cp "$conf" "$dest"
+        chmod 644 "$dest"
+        log_success "Deployed: $fname → $dest_dir/"
+        ((deployed++))
+    done
+
+    if [[ $deployed -eq 0 ]]; then
+        log_warning "No KVM module configuration files found"
+    else
+        log_info "KVM modules will be loaded automatically on next boot"
+        log_info "To load now: sudo modprobe kvm && sudo modprobe kvm_intel"
+        log_info "Note: User must be in 'kvm' group (sudo usermod -aG kvm username)"
+    fi
+
+    return 0
+}
+
+# Deploy logrotate configurations
+deploy_logrotate() {
+    if ! is_selected "logrotate"; then
+        return 0
+    fi
+    
+    echo ""
+    log_info "══════════════════════════════════════════════════════════════="
+    log_info "Deploying Logrotate Configurations"
+    log_info "══════════════════════════════════════════════════════════════="
+    
+    if [[ -d "$SYSTEMCONFIG_DIR/logrotate.d" ]]; then
+        for logrotate_file in "$SYSTEMCONFIG_DIR/logrotate.d"/*; do
+            # Skip README and backup files
+            if [[ -f "$logrotate_file" ]] && [[ ! "$logrotate_file" =~ README ]] && [[ ! "$logrotate_file" =~ \.backup\. ]]; then
+                local logrotate_name=$(basename "$logrotate_file")
+                local dest_path=$(get_dest_path "/etc/logrotate.d/$logrotate_name")
+                
+                copy_file_with_diff "$logrotate_file" "$dest_path" "644" "$TEST_MODE"
+                
+                # Test logrotate configuration syntax after deployment
+                if [[ "$TEST_MODE" != true ]] && [[ "$DRY_RUN" != true ]]; then
+                    if logrotate -d "$dest_path" &>/dev/null; then
+                        log_success "Logrotate configuration validated: $logrotate_name"
+                    else
+                        log_warning "Logrotate syntax check had warnings for: $logrotate_name (may still work)"
+                    fi
+                fi
+            fi
+        done
+    else
+        log_warning "No logrotate.d directory found in $SYSTEMCONFIG_DIR/logrotate.d"
+    fi
 }
 
 # Reload system services
@@ -823,10 +976,13 @@ reload_services() {
     systemctl daemon-reload
     log_success "SystemD daemon reloaded"
     
-    # Apply sysctl settings
+    # Apply sysctl settings - only if we deployed sysctl configs
     if is_selected "sysctl" && [[ -d "$SYSTEMCONFIG_DIR/sysctl.d" ]]; then
-        sysctl --system &>/dev/null || log_warning "Some sysctl settings may require reboot"
-        log_success "Sysctl settings applied"
+        if sysctl --system &>/dev/null; then
+            log_success "Sysctl settings applied"
+        else
+            log_warning "Some sysctl settings may require reboot or have errors"
+        fi
     fi
     
     # Reload udev rules
@@ -966,7 +1122,11 @@ COMPONENTS (use with or without --select):
   onload                  Solarflare Onload configuration
   sysctl                  System tuning parameters
   udev                    Hardware device rules
+  sudoers                 Passwordless sudo configurations
+  kvm                     KVM virtualization modules
+  logrotate               Log rotation configurations
   cron                    Scheduled jobs (crontab)
+  shell                   Shell environment (bashrc.trading)
 
 EXAMPLES:
   # Full deployment (production)
@@ -1064,6 +1224,8 @@ main() {
         deploy_sysctl_configs
         deploy_udev_rules
         deploy_sudoers
+        deploy_kvm
+        deploy_logrotate
         deploy_cron_jobs
         deploy_shell
     fi
@@ -1118,7 +1280,7 @@ parse_arguments() {
                 SELECTED_ITEMS+=("network:$1")
                 shift
                 ;;
-            systemd-services|systemd-overrides|kernel|network|redis|onload|sysctl|udev|sudoers|cron|shell)
+            systemd-services|systemd-overrides|kernel|network|redis|onload|sysctl|udev|sudoers|kvm|logrotate|cron|shell)
                 SELECTIVE_MODE=true
                 SELECTED_COMPONENTS+=("$1")
                 shift
